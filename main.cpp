@@ -34,7 +34,17 @@ int main(int argc, char** argv) {
         int height = frame.rows;
 
         // API 2: Process the image and get results
-        int num = svObjectModules_inputImageBGR(frame.ptr<unsigned char>(0), frame.cols, frame.rows, frame.channels(), results, MAX_OBJECTS);
+        int ok = svObjectModules_inputImageBGR(frame.ptr<unsigned char>(0), frame.cols, frame.rows, frame.channels(), MAX_OBJECTS);
+        if (ok == 0) {
+            cerr << "Failed to process image." << endl;
+            break;
+        }
+        // API 3: Get results
+        int num = svObjectModules_getResult(results, MAX_OBJECTS, true);
+        if (num == -1) {
+            cerr << "Thread have been stoped." << endl;
+            break;
+        }
         auto t2 = chrono::high_resolution_clock::now();
         double duration_ms = chrono::duration<double, milli>(t2 - t1).count();
         total_time_ms += duration_ms;

@@ -8,7 +8,6 @@
 
 extern "C" {
 
-// 結構：DLL 專用輸出格式
 typedef struct svResultProjectObject_DataType
 {
     svResultProjectObject_DataType()
@@ -22,6 +21,19 @@ typedef struct svResultProjectObject_DataType
     int class_id;
 } svObjData_t;
 
+typedef struct InputData {
+    unsigned char* image_data;
+    int width;
+    int height;
+    int channels;
+    int max_output;
+};
+
+typedef struct OutputData {
+    svObjData_t* output;
+    int count;
+};
+
 /**
  * 初始化模型
  */
@@ -34,12 +46,11 @@ YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_thre
  * @param width        圖片寬
  * @param height       圖片高
  * @param channels     通常為 3
- * @param output       呼叫端分配好的陣列
  * @param max_output   最大可寫入數量
  * @return             實際填入的數量
  */
-YOLOV11_API int svObjectModules_inputImageBGR(unsigned char* image_data, int width, int height, int channels, svObjData_t* output, int max_output);
-
+YOLOV11_API int svObjectModules_inputImageBGR(unsigned char* image_data, int width, int height, int channels, int max_output);
+YOLOV11_API int svObjectModules_getResult(svObjData_t* output, int max_output, bool wait=true);
 /**
  * 清理資源
  */
