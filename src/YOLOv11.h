@@ -19,7 +19,7 @@ class YOLOv11
 
 public:
 
-    YOLOv11(string model_path, nvinfer1::ILogger& logger);
+    YOLOv11(string model_path, float conf_threshold, nvinfer1::ILogger& logger);
     ~YOLOv11();
 
     void preprocess(Mat& image);
@@ -28,7 +28,7 @@ public:
     void draw(Mat& image, const vector<Detection>& output);
 
 private:
-    void init(std::string engine_path, nvinfer1::ILogger& logger);
+    void init(std::string engine_path, float conf_threshold, nvinfer1::ILogger& logger);
 
     float* gpu_buffers[2];               //!< The vector of device buffers needed for engine execution
     float* cpu_output_buffer;
@@ -43,10 +43,10 @@ private:
     int input_h;
     int num_detections;
     int detection_attribute_size;
-    int num_classes = 80;
+    int num_classes = 11;
     const int MAX_IMAGE_SIZE = 4096 * 4096;
     float conf_threshold = 0.3f;
-    float nms_threshold = 0.4f;
+    float nms_threshold = 0.7f;
 
     vector<Scalar> colors;
 

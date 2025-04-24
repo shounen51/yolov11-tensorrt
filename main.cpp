@@ -1,145 +1,70 @@
-﻿#ifdef _WIN32
-#include <windows.h>
-#else
-#include <sys/stat.h>
-#include <unistd.h>
-#endif
-
+﻿#include "yolov11_dll.h"
+#include <opencv2/opencv.hpp>
 #include <iostream>
-#include <string>
-#include "yolov11.h"
 
+using namespace std;
+using namespace cv;
+// usage: ./yolov11_test.exe <engine_path> <video_path>
+int main(int argc, char** argv) {
+    if (argc < 3) {
+        cout << "Usage: " << argv[0] << " <engine_path> <video_path>" << endl;
+        return -1;
+    }
+    const char* engine_path = argv[1];
+    const char* video_path = argv[2];
+    // API 1: Initialize the model
+    svCreate_ObjectModules(engine_path, 0.3f);
 
-bool IsPathExist(const string& path) {
-#ifdef _WIN32
-    DWORD fileAttributes = GetFileAttributesA(path.c_str());
-    return (fileAttributes != INVALID_FILE_ATTRIBUTES);
-#else
-    return (access(path.c_str(), F_OK) == 0);
-#endif
-}
-bool IsFile(const string& path) {
-    if (!IsPathExist(path)) {
-        printf("%s:%d %s not exist\n", __FILE__, __LINE__, path.c_str());
-        return false;
+    VideoCapture cap(video_path);
+    if (!cap.isOpened()) {
+        cerr << "Failed to open video: " << video_path << endl;
+        return -1;
     }
 
-#ifdef _WIN32
-    DWORD fileAttributes = GetFileAttributesA(path.c_str());
-    return ((fileAttributes != INVALID_FILE_ATTRIBUTES) && ((fileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0));
-#else
-    struct stat buffer;
-    return (stat(path.c_str(), &buffer) == 0 && S_ISREG(buffer.st_mode));
-#endif
-}
+    int frame_count = 0;
+    double total_time_ms = 0.0;
+    const int MAX_OBJECTS = 100;
+    // API 2: Allocate memory for results
+    svObjData_t results[MAX_OBJECTS];
 
-/**
- * @brief Setting up Tensorrt logger
-*/
-class Logger : public nvinfer1::ILogger {
-    void log(Severity severity, const char* msg) noexcept override {
-        // Only output logs with severity greater than warning
-        if (severity <= Severity::kWARNING)
-            std::cout << msg << std::endl;
-    }
-}logger;
+    Mat frame;
+    while (cap.read(frame)) {
+        auto t1 = chrono::high_resolution_clock::now();
+        int width = frame.cols;
+        int height = frame.rows;
 
-int main(int argc, char** argv)
-{
-    const string engine_file_path{ argv[1] };
-    const string path{ argv[2] };
-    vector<string> imagePathList;
-    bool                     isVideo{ false };
-    assert(argc == 3);
+        // API 2: Process the image and get results
+        int num = svObjectModules_inputImageBGR(frame.ptr<unsigned char>(0), frame.cols, frame.rows, frame.channels(), results, MAX_OBJECTS);
+        auto t2 = chrono::high_resolution_clock::now();
+        double duration_ms = chrono::duration<double, milli>(t2 - t1).count();
+        total_time_ms += duration_ms;
+        frame_count++;
 
-    if (IsFile(path))
-    {
-        string suffix = path.substr(path.find_last_of('.') + 1);
-        if (suffix == "jpg" || suffix == "jpeg" || suffix == "png")
-        {
-            imagePathList.push_back(path);
-        }
-        else if (suffix == "mp4" || suffix == "avi" || suffix == "m4v" || suffix == "mpeg" || suffix == "mov" || suffix == "mkv" || suffix == "webm")
-        {
-            isVideo = true;
-        }
-        else {
-            printf("suffix %s is wrong !!!\n", suffix.c_str());
-            abort();
-        }
-    }
-    else if (IsPathExist(path))
-    {
-        glob(path + "/*.jpg", imagePathList);
-    }
-
-    // Assume it's a folder, add logic to handle folders
-    // init model
-    YOLOv11 model(engine_file_path, logger);
-
-    if (isVideo) {
-        //path to video
-        cv::VideoCapture cap(path);
-
-        while (1)
-        {
-            Mat image;
-            cap >> image;
-
-            if (image.empty()) break;
-
-            vector<Detection> objects;
-            model.preprocess(image);
-
-            auto start = std::chrono::system_clock::now();
-            model.infer();
-            auto end = std::chrono::system_clock::now();
-
-            model.postprocess(objects);
-            model.draw(image, objects);
-
-            auto tc = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.;
-            printf("cost %2.4lf ms\n", tc);
-
-            imshow("prediction", image);
-            waitKey(1);
+        // cout << "Detected " << num << " objects.\n";
+        for (int i = 0; i < num; ++i) {
+            auto& r = results[i];
+            if (r.class_id < 10) continue; // only show class "person on wheelchair"
+            cout << "Class: " << r.class_id
+                    << ", Conf: " << r.confidence
+                    << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
+                    << "," << r.bbox_xmax << "," << r.bbox_ymax << "]\n";
+            rectangle(frame, Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
+                                        Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)),
+                        Scalar(0, 255, 0), 2);
         }
 
-        // Release resources
-        destroyAllWindows();
-        cap.release();
+        imshow("Result", frame);
+        if (waitKey(1) == 27) break;
     }
-    else {
-        // path to folder saves images
-        for (const auto& imagePath : imagePathList)
-        {
-            // open image
-            Mat image = imread(imagePath);
-            if (image.empty())
-            {
-                cerr << "Error reading image: " << imagePath << endl;
-                continue;
-            }
+    release();
 
-            vector<Detection> objects;
-            model.preprocess(image);
-
-            auto start = std::chrono::system_clock::now();
-            model.infer();
-            auto end = std::chrono::system_clock::now();
-
-            model.postprocess(objects);
-            model.draw(image, objects);
-
-            auto tc = (double)std::chrono::duration_cast<std::chrono::microseconds>(end - start).count() / 1000.;
-            printf("cost %2.4lf ms\n", tc);
-
-            model.draw(image, objects);
-            imshow("Result", image);
-
-            waitKey(0);
-        }
+    if (frame_count > 0) {
+        double avg_time = total_time_ms / frame_count;
+        double avg_fps = 1000.0 / avg_time;
+        cout << "Processed " << frame_count << " frames" << endl;
+        cout << "Average time per frame: " << avg_time << " ms" << endl;
+        cout << "Average FPS: " << avg_fps << endl;
     }
-
     return 0;
+
 }

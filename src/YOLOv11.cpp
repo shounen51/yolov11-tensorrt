@@ -14,16 +14,17 @@ static Logger logger;
 #define warmup true
 
 
-YOLOv11::YOLOv11(string model_path, nvinfer1::ILogger& logger)
+YOLOv11::YOLOv11(string model_path, float conf_threshold, nvinfer1::ILogger& logger)
 {
     // Deserialize an engine
     if (model_path.find(".onnx") == std::string::npos)
     {
-        init(model_path, logger);
+        init(model_path, conf_threshold, logger);
     }
     // Build an engine from an onnx model
     else
     {
+        std::cout << "Build an engine from an onnx model" << std::endl;
         build(model_path, logger);
         saveEngine(model_path);
     }
@@ -41,8 +42,9 @@ YOLOv11::YOLOv11(string model_path, nvinfer1::ILogger& logger)
 }
 
 
-void YOLOv11::init(std::string engine_path, nvinfer1::ILogger& logger)
+void YOLOv11::init(std::string engine_path, float conf_threshold, nvinfer1::ILogger& logger)
 {
+    this->conf_threshold = conf_threshold;
     // Read the engine file
     ifstream engineStream(engine_path, ios::binary);
     engineStream.seekg(0, ios::end);
@@ -123,7 +125,9 @@ void YOLOv11::postprocess(vector<Detection>& output)
     vector<Rect> boxes;
     vector<int> class_ids;
     vector<float> confidences;
-
+    vector<Rect> boxes_pw; // pw special
+    vector<int> class_ids_pw; // pw special
+    vector<float> confidences_pw; // pw special
     const Mat det_output(detection_attribute_size, num_detections, CV_32F, cpu_output_buffer);
 
     for (int i = 0; i < det_output.cols; ++i) {
@@ -142,16 +146,24 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.y = static_cast<int>((cy - 0.5 * oh));
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
-
-            boxes.push_back(box);
-            class_ids.push_back(class_id_point.y);
-            confidences.push_back(score);
+            if (box.width > 0.5*640 || box.height > 0.5*640) continue;
+            if (class_id_point.y == 10){ // pw special
+                boxes_pw.push_back(box); // pw special
+                class_ids_pw.push_back(class_id_point.y); // pw special
+                confidences_pw.push_back(score); // pw special
+            } // pw special
+            else { // pw special
+                boxes.push_back(box);
+                class_ids.push_back(class_id_point.y);
+                confidences.push_back(score);
+            } // pw special
         }
     }
 
     vector<int> nms_result;
     dnn::NMSBoxes(boxes, confidences, conf_threshold, nms_threshold, nms_result);
-
+    vector<int> nms_result_pw; // pw special
+    dnn::NMSBoxes(boxes_pw, confidences_pw, conf_threshold, nms_threshold, nms_result_pw); // pw special
     for (int i = 0; i < nms_result.size(); i++)
     {
         Detection result;
@@ -161,6 +173,15 @@ void YOLOv11::postprocess(vector<Detection>& output)
         result.bbox = boxes[idx];
         output.push_back(result);
     }
+    for (int i = 0; i < nms_result_pw.size(); i++) // pw special
+    {
+        Detection result;
+        int idx = nms_result_pw[i]; // pw special
+        result.class_id = class_ids_pw[idx]; // pw special
+        result.conf = confidences_pw[idx]; // pw special
+        result.bbox = boxes_pw[idx]; // pw special
+        output.push_back(result); // pw special
+    } // pw special
 }
 
 void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)
@@ -171,16 +192,17 @@ void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)
     IBuilderConfig* config = builder->createBuilderConfig();
     if (isFP16)
     {
+        std::cout << "FP16" << std::endl;
         config->setFlag(BuilderFlag::kFP16);
     }
     nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, logger);
     bool parsed = parser->parseFromFile(onnxPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO));
     IHostMemory* plan{ builder->buildSerializedNetwork(*network, *config) };
-
+    std::cout << "createInferRuntime" << std::endl;
     runtime = createInferRuntime(logger);
-
+    std::cout << "deserializeCudaEngine" << std::endl;
     engine = runtime->deserializeCudaEngine(plan->data(), plan->size());
-
+    std::cout << "createExecutionContext" << std::endl;
     context = engine->createExecutionContext();
 
     delete network;
