@@ -1,5 +1,6 @@
 ﻿#include "yolov11_dll.h"
 #include <opencv2/opencv.hpp>
+#include "ColorClassifier.h"
 #include <iostream>
 
 using namespace std;
@@ -27,6 +28,9 @@ int main(int argc, char** argv) {
     // API 2: Allocate memory for results
     svObjData_t results[MAX_OBJECTS];
 
+    HLSColorClassifier colorClassfer;
+    colorClassfer.setDefaultColorRange();
+    vector<vector<unsigned char>> peopleColors;
     Mat frame;
     while (cap.read(frame)) {
         auto t1 = chrono::high_resolution_clock::now();
@@ -53,7 +57,7 @@ int main(int argc, char** argv) {
         // cout << "Detected " << num << " objects.\n";
         for (int i = 0; i < num; ++i) {
             auto& r = results[i];
-            if (r.class_id < 10) continue; // only show class "person on wheelchair"
+            if (r.class_id != 0) continue; // only show class "person on wheelchair"
             cout << "Class: " << r.class_id
                     << ", Conf: " << r.confidence
                     << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
@@ -61,6 +65,23 @@ int main(int argc, char** argv) {
             rectangle(frame, Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
                                         Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)),
                         Scalar(0, 255, 0), 2);
+            cv::Mat personCrop = frame(Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
+                                        Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)));
+            vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
+            // find the biggest point of color
+            int maxIndex = 0;
+            int maxCount = 0;
+            for (int j = 0; j < color.size(); j++) {
+                if (color[j] > maxCount) {
+                    maxCount = color[j];
+                    maxIndex = j;
+                }
+            }
+            string colorStr = "Color: ";
+            colorStr += ColorLabelsString[maxIndex];
+            colorStr += " (" + to_string(maxCount) + ")";
+            putText(frame, colorStr, Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows - 10),
+                    FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
         }
 
         imshow("Result", frame);

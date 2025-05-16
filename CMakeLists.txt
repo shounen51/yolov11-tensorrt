@@ -13,6 +13,7 @@ set(CMAKE_CXX_STANDARD 17)
 include_directories(${CUDA_INCLUDE_DIRS})
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/ColorClassifier)
 
 # Set TensorRT path
 set(TENSORRT_DIR "C:/Program Files (x86)/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8")
@@ -26,7 +27,6 @@ set(COMMON_SOURCES
     src/yolov11.cpp
     src/preprocess.cu
 )
-
 set(COMMON_HEADERS
     src/yolov11.h
     src/macros.h
@@ -49,10 +49,11 @@ target_link_libraries(yolov11
     ${CUDA_LIBRARIES}
     ${TENSORRT_LIBS}
 )
-
+message(STATUS "COMMON_SOURCES: ${COMMON_SOURCES}")
 # === Test executable ===
 set(EXEC_SOURCES
     main.cpp
+    src/ColorClassifier/ColorClassifier.cpp
 )
 
 add_executable(yolov11_test ${EXEC_SOURCES})
