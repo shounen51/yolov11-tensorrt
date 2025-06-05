@@ -26,6 +26,7 @@ enable_language(CUDA)
 set(COMMON_SOURCES
     src/yolov11.cpp
     src/preprocess.cu
+    src/ColorClassifier/ColorClassifier.cpp
 )
 set(COMMON_HEADERS
     src/yolov11.h
@@ -34,6 +35,7 @@ set(COMMON_HEADERS
     src/cuda_utils.h
     src/preprocess.h
     src/common.h
+    src/ColorClassifier/ColorClassifier.h
 )
 
 # === DLL target ===

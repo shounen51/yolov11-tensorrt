@@ -1,6 +1,7 @@
 #include "yolov11_dll.h"
 #include "yolov11.h"
 #include "logging.h"
+#include "ColorClassifier.h"
 #include <memory>
 #include <opencv2/opencv.hpp>
 
@@ -9,7 +10,7 @@ static Logger logger;
 static std::thread inferenceThread; // 用於執行 inference_thread 的執行緒
 static bool stopThread = false;     // 用於控制執行緒的停止
 
-
+static HLSColorClassifier colorClassfer;
 
 static std::queue<InputData> inputQueue;
 static std::queue<OutputData> outputQueue;
@@ -19,6 +20,7 @@ static std::condition_variable outputQueueCondition;
 
 YOLOV11_API void infernce_thread() {
     cout << "Inference thread started." << std::endl;
+    colorClassfer.setDefaultColorRange();
     while (!stopThread) {
         std::unique_lock<std::mutex> lock(queueMutex);
 
@@ -64,6 +66,21 @@ YOLOV11_API void infernce_thread() {
             float x2 = (det.bbox.x + det.bbox.width - pad_x) / r;
             float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
 
+            // 計算顏色
+            cv::Mat personCrop = image(Rect(Point(x1, y1),
+                                            Point(x2, y2)));
+            cv::cvtColor(personCrop, personCrop, cv::COLOR_BGR2RGB); // 將 BGR 轉換為 RGB
+            vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
+            int maxIndex = 0;
+            int maxCount = 0;
+            for (int j = 0; j < color.size(); j++) {
+                if (color[j] > maxCount) {
+                    maxCount = color[j];
+                    maxIndex = j;
+                }
+            }
+            string colorStr = ColorLabelsString[maxIndex];
+
             // 正規化成 [0~1]
             x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
             y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
@@ -77,6 +94,8 @@ YOLOV11_API void infernce_thread() {
             output[i].bbox_ymax = y2;
             output[i].class_id = det.class_id;
             output[i].confidence = det.conf;
+            strncpy(output[i].color_label, colorStr.c_str(), sizeof(output[i].color_label) - 1);
+            output[i].color_label[sizeof(output[i].color_label) - 1] = '\0'; // 確保以空字元結尾
         }
 
         // 將結果放入 outputQueue

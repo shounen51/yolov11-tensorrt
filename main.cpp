@@ -65,22 +65,7 @@ int main(int argc, char** argv) {
             rectangle(frame, Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
                                         Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)),
                         Scalar(0, 255, 0), 2);
-            cv::Mat personCrop = frame(Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
-                                        Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)));
-            vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
-            // find the biggest point of color
-            int maxIndex = 0;
-            int maxCount = 0;
-            for (int j = 0; j < color.size(); j++) {
-                if (color[j] > maxCount) {
-                    maxCount = color[j];
-                    maxIndex = j;
-                }
-            }
-            string colorStr = "Color: ";
-            colorStr += ColorLabelsString[maxIndex];
-            colorStr += " (" + to_string(maxCount) + ")";
-            putText(frame, colorStr, Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows - 10),
+            putText(frame, std::string(r.color_label), Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows - 10),
                     FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
         }
 
