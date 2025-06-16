@@ -1,6 +1,5 @@
 ﻿#include "yolov11_dll.h"
 #include <opencv2/opencv.hpp>
-#include "ColorClassifier.h"
 #include <iostream>
 
 using namespace std;
@@ -28,8 +27,6 @@ int main(int argc, char** argv) {
     // API 2: Allocate memory for results
     svObjData_t results[MAX_OBJECTS];
 
-    HLSColorClassifier colorClassfer;
-    colorClassfer.setDefaultColorRange();
     vector<vector<unsigned char>> peopleColors;
     Mat frame;
     while (cap.read(frame)) {
@@ -38,7 +35,7 @@ int main(int argc, char** argv) {
         int height = frame.rows;
 
         // API 2: Process the image and get results
-        int ok = svObjectModules_inputImageBGR(frame.ptr<unsigned char>(0), frame.cols, frame.rows, frame.channels(), MAX_OBJECTS);
+        int ok = svObjectModules_inputImageYUV(frame.ptr<unsigned char>(0), frame.cols, frame.rows, frame.channels(), MAX_OBJECTS);
         if (ok == 0) {
             cerr << "Failed to process image." << endl;
             break;

@@ -5,6 +5,7 @@
 #include "preprocess.h"
 #include <NvOnnxParser.h>
 #include "common.h"
+#include "Logger.h"
 #include <fstream>
 #include <iostream>
 
@@ -24,7 +25,7 @@ YOLOv11::YOLOv11(string model_path, float conf_threshold, nvinfer1::ILogger& log
     // Build an engine from an onnx model
     else
     {
-        std::cout << "Build an engine from an onnx model" << std::endl;
+        LOG_INFO("Build an engine from an onnx model");
         build(model_path, logger);
         saveEngine(model_path);
     }
@@ -81,7 +82,7 @@ void YOLOv11::init(std::string engine_path, float conf_threshold, nvinfer1::ILog
         for (int i = 0; i < 10; i++) {
             this->infer();
         }
-        printf("model warmup 10 times\n");
+        LOG_INFO("model warmup 10 times");
     }
 }
 
@@ -92,6 +93,11 @@ YOLOv11::~YOLOv11()
     CUDA_CHECK(cudaStreamDestroy(stream));
     for (int i = 0; i < 2; i++)
         CUDA_CHECK(cudaFree(gpu_buffers[i]));
+    if (gpu_rgb_buffer) {
+        CUDA_CHECK(cudaFree(gpu_rgb_buffer));
+        gpu_rgb_buffer = nullptr;
+    }
+
     delete[] cpu_output_buffer;
 
     // Destroy the engine
@@ -101,10 +107,27 @@ YOLOv11::~YOLOv11()
     delete runtime;
 }
 
-void YOLOv11::preprocess(Mat& image) {
+uint8_t* YOLOv11::getGpuRgbBuffer(int width, int height) {
+    int img_size = width * height * 3 * sizeof(uint8_t); // YUV420 size
+    if (img_size > gpu_rgb_buffer_size) {
+        LOG_INFO("RGB buffer size changed from " + std::to_string(gpu_rgb_buffer_size) + " to " + std::to_string(img_size));
+        if (gpu_rgb_buffer) {
+            CUDA_CHECK(cudaFree(gpu_rgb_buffer));
+        }
+        CUDA_CHECK(cudaMalloc(&gpu_rgb_buffer, img_size));
+        gpu_rgb_buffer_size = img_size;
+    }
+    if (gpu_rgb_buffer == nullptr) {
+        LOG_INFO("Allocating GPU RGB buffer of size: " + std::to_string(gpu_rgb_buffer_size));
+        CUDA_CHECK(cudaMalloc(&gpu_rgb_buffer, gpu_rgb_buffer_size));
+    }
+    return gpu_rgb_buffer;
+}
+
+void YOLOv11::preprocess(uint8_t* gpu_rgb_buffer, int im0_w, int im0_h, bool block) {
     // Preprocessing data on gpu
-    cuda_preprocess(image.ptr(), image.cols, image.rows, gpu_buffers[0], input_w, input_h, stream);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+    cuda_preprocess(gpu_rgb_buffer, im0_w, im0_h, gpu_buffers[0], input_w, input_h, stream);
+    if (block) CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
 void YOLOv11::infer()
@@ -147,7 +170,7 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
             if (box.width > 0.5*640 || box.height > 0.5*640) continue;
-            if (class_id_point.y == 10){ // pw special
+            if (class_id_point.y == person_on_wheelchart_class_id){ // pw special
                 boxes_pw.push_back(box); // pw special
                 class_ids_pw.push_back(class_id_point.y); // pw special
                 confidences_pw.push_back(score); // pw special
@@ -192,17 +215,17 @@ void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)
     IBuilderConfig* config = builder->createBuilderConfig();
     if (isFP16)
     {
-        std::cout << "FP16" << std::endl;
+        LOG_INFO("FP16");
         config->setFlag(BuilderFlag::kFP16);
     }
     nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, logger);
     bool parsed = parser->parseFromFile(onnxPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO));
     IHostMemory* plan{ builder->buildSerializedNetwork(*network, *config) };
-    std::cout << "createInferRuntime" << std::endl;
+    LOG_INFO("createInferRuntime");
     runtime = createInferRuntime(logger);
-    std::cout << "deserializeCudaEngine" << std::endl;
+    LOG_INFO("deserializeCudaEngine");
     engine = runtime->deserializeCudaEngine(plan->data(), plan->size());
-    std::cout << "createExecutionContext" << std::endl;
+    LOG_INFO("createExecutionContext");
     context = engine->createExecutionContext();
 
     delete network;
@@ -232,7 +255,7 @@ bool YOLOv11::saveEngine(const std::string& onnxpath)
         file.open(engine_path, std::ios::binary | std::ios::out);
         if (!file.is_open())
         {
-            std::cout << "Create engine file" << engine_path << " failed" << std::endl;
+            LOG_INFO("Create engine file" + engine_path + " failed");
             return 0;
         }
         file.write((const char*)data->data(), data->size());

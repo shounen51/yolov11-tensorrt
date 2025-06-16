@@ -2,6 +2,9 @@
 #include "yolov11.h"
 #include "logging.h"
 #include "ColorClassifier.h"
+#include "YUV420ToRGB.h"
+#include "Logger.h"
+#include <cuda_utils.h>
 #include <memory>
 #include <opencv2/opencv.hpp>
 
@@ -18,9 +21,35 @@ static std::mutex queueMutex;
 static std::condition_variable inputQueueCondition;
 static std::condition_variable outputQueueCondition;
 
-YOLOV11_API void infernce_thread() {
-    cout << "Inference thread started." << std::endl;
+static int default_yuv_size = 1920*1920*3/2 * sizeof(uint8_t); // Example size for 1920x1920 YUV420 image
+static uint8_t* yuv_buffer_host = new uint8_t[default_yuv_size];
+static uint8_t* yuv_buffer_device = nullptr;
+
+uint8_t* GetYuvGpuBuffer(uint8_t* yuv, int width, int height) {
+    int img_size = width * height * 3 / 2 * sizeof(uint8_t);
+    if (img_size > default_yuv_size) {
+        LOG_INFO("YUV buffer size changed from " + std::to_string(default_yuv_size) + " to " + std::to_string(img_size));
+        if (yuv_buffer_host) delete[] yuv_buffer_host;
+        yuv_buffer_host = new uint8_t[img_size];
+        if (yuv_buffer_device) CUDA_CHECK(cudaFree(yuv_buffer_device));
+        CUDA_CHECK(cudaMalloc(&yuv_buffer_device, img_size));
+        default_yuv_size = img_size;
+    }
+    if (yuv_buffer_device == nullptr) {
+        LOG_INFO("Allocating GPU YUV buffer of size: " + std::to_string(default_yuv_size));
+        CUDA_CHECK(cudaMalloc(&yuv_buffer_device, default_yuv_size));
+    }
+    memcpy(yuv_buffer_host, yuv, img_size);
+    // Copy YUV data to device
+    CUDA_CHECK(cudaMemcpy(yuv_buffer_device, yuv_buffer_host, img_size, cudaMemcpyHostToDevice));
+    return yuv_buffer_device;
+}
+
+void infernce_thread() {
+    LOG_INFO("Inference thread started.");
     colorClassfer.setDefaultColorRange();
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
     while (!stopThread) {
         std::unique_lock<std::mutex> lock(queueMutex);
 
@@ -34,21 +63,29 @@ YOLOV11_API void infernce_thread() {
         InputData input = inputQueue.front();
         inputQueue.pop();
         lock.unlock();
-
-        // 處理輸入資料
-        cv::Mat image(input.height, input.width, CV_8UC3);
-        memcpy(image.data, input.image_data, input.width * input.height * input.channels);
+        // 取得 GPU buffers
+        uint8_t* gpu_yuv_buffer = GetYuvGpuBuffer(input.image_data, input.width, input.height);
+        uint8_t* gpu_rgb_buffer = model->getGpuRgbBuffer(input.width, input.height);
+        // 將 yuv 轉換成 rgb
+        yuv420toRGBInPlace(gpu_yuv_buffer, input.width, input.height, gpu_rgb_buffer, stream);
 
         std::vector<Detection> detections;
-        model->preprocess(image);
+
+        model->preprocess(gpu_rgb_buffer, input.width, input.height, false);
+        // 利用空檔時間將 GPU buffer 從 device 轉成 Mat
+        std::vector<uint8_t> rgb_host(input.width * input.height * 3);
+        CUDA_CHECK(cudaMemcpy(rgb_host.data(), gpu_rgb_buffer, input.width * input.height * 3 * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+        cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
+        // 等待 preprocess 完成
+        model->joinGPUStream();
         model->infer();
         model->postprocess(detections);
 
         int count = std::min(static_cast<int>(detections.size()), input.max_output);
 
         // YOLO input size（根據模型固定）
-        const int INPUT_W = 640;
-        const int INPUT_H = 640;
+        const int INPUT_W = model->input_w;
+        const int INPUT_H = model->input_h;
 
         // 計算 resize 比例與 padding
         float r = std::min(1.0f * INPUT_W / input.width, 1.0f * INPUT_H / input.height);
@@ -57,6 +94,7 @@ YOLOV11_API void infernce_thread() {
         int pad_x = (INPUT_W - unpad_w) / 2;
         int pad_y = (INPUT_H - unpad_h) / 2;
         svObjData_t* output = new svObjData_t[count];
+
         for (int i = 0; i < count; ++i) {
             const auto& det = detections[i];
 
@@ -67,7 +105,7 @@ YOLOV11_API void infernce_thread() {
             float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
 
             // 計算顏色
-            cv::Mat personCrop = image(Rect(Point(x1, y1),
+            cv::Mat personCrop = rgb_image(Rect(Point(x1, y1),
                                             Point(x2, y2)));
             cv::cvtColor(personCrop, personCrop, cv::COLOR_BGR2RGB); // 將 BGR 轉換為 RGB
             vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
@@ -107,6 +145,25 @@ YOLOV11_API void infernce_thread() {
 }
 extern "C" {
     YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold) {
+        // 取得 userprofile 路徑
+        std::string logPath;
+    #if defined(_WIN32)
+        char* userProfile = std::getenv("USERPROFILE");
+        if (userProfile) {
+            logPath = std::string(userProfile) + "\\AppData\\Local\\3S\\AIDLL\\log.log";
+        } else {
+            logPath = "log.log";
+        }
+    #else
+        const char* home = std::getenv("HOME");
+        if (home) {
+            logPath = std::string(home) + "/.local/share/3S/AIDLL/log.log";
+        } else {
+            logPath = "log.log";
+        }
+    #endif
+        YoloLogger::init(logPath);
+        LOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
         model = std::make_unique<YOLOv11>(engine_path, conf_threshold, logger);
 
         // 啟動執行緒執行 infernce_thread
@@ -116,13 +173,16 @@ extern "C" {
         });
     }
 
-    YOLOV11_API int svObjectModules_inputImageBGR(unsigned char* image_data, int width, int height, int channels, int max_output) {
-        if (!model || !image_data) return 0;
-        {
-            std::lock_guard<std::mutex> lock(queueMutex);
-            inputQueue.push({image_data, width, height, channels, max_output});
+    YOLOV11_API int svObjectModules_inputImageYUV(unsigned char* image_data, int width, int height, int channels, int max_output) {
+        if (!model){
+            LOG_WARN("Model not initialized. Call svCreate_ObjectModules first.");
+            return 0;
         }
+        std::lock_guard<std::mutex> lock(queueMutex);
+        inputQueue.push({image_data, width, height, channels, max_output});
         inputQueueCondition.notify_one();
+        if (inputQueue.size() > 100)
+            LOG_WARN("Input queue size exceeds 100, input too fast.");
         return 1;
     }
 
@@ -130,7 +190,9 @@ extern "C" {
         std::unique_lock<std::mutex> lock(queueMutex);
         if (wait) {
             // 等待直到有結果可用
-            outputQueueCondition.wait(lock, [] { return !outputQueue.empty() || stopThread; });
+            if (outputQueue.empty())
+                // LOG_INFO("Waiting for output queue to have results.");
+                outputQueueCondition.wait(lock, [] { return !outputQueue.empty() || stopThread; });
         }
         if (stopThread || outputQueue.empty()) return -1;
         // 從 outputQueue 中取出結果
@@ -151,7 +213,7 @@ extern "C" {
         if (inferenceThread.joinable()) {
             inferenceThread.join();
         }
-        cout << "Inference thread stopped." << std::endl;
+        LOG_INFO("Inference thread stopped.");
         model.reset();
     }
 }

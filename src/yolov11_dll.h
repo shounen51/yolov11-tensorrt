@@ -52,7 +52,7 @@ YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_thre
  * @param max_output   最大可寫入數量
  * @return             實際填入的數量
  */
-YOLOV11_API int svObjectModules_inputImageBGR(unsigned char* image_data, int width, int height, int channels, int max_output);
+YOLOV11_API int svObjectModules_inputImageYUV(unsigned char* image_data, int width, int height, int channels, int max_output);
 YOLOV11_API int svObjectModules_getResult(svObjData_t* output, int max_output, bool wait=true);
 /**
  * 清理資源

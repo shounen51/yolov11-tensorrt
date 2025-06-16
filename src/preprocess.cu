@@ -74,10 +74,10 @@ __global__ void warpaffine_kernel(
         c2 = w1 * v1[2] + w2 * v2[2] + w3 * v3[2] + w4 * v4[2];
     }
 
-    // bgr to rgb 
-    float t = c2;
-    c2 = c0;
-    c0 = t;
+    // bgr to rgb
+    // float t = c2;
+    // c2 = c0;
+    // c0 = t;
 
     // normalization
     c0 = c0 / 255.0f;
@@ -100,14 +100,19 @@ void cuda_preprocess(
     cudaStream_t stream) {
 
     int img_size = src_width * src_height * 3;
-    // copy data to pinned memory
-    memcpy(img_buffer_host, src, img_size);
-    // copy data to device memory
-    CUDA_CHECK(cudaMemcpyAsync(img_buffer_device, img_buffer_host, img_size, cudaMemcpyHostToDevice, stream));
+
+    // // CPU: Copy data from src (CPU Mat.ptr()) to pinned memory (img_buffer_host)
+    // memcpy(img_buffer_host, src, img_size);
+
+    // // GPU: Copy data from pinned memory (img_buffer_host) to device memory (img_buffer_device)
+    // CUDA_CHECK(cudaMemcpyAsync(img_buffer_device, img_buffer_host, img_size, cudaMemcpyHostToDevice, stream));
+
+    img_buffer_device = src;
 
     AffineMatrix s2d, d2s;
-    float scale = std::min(dst_height / (float)src_height, dst_width / (float)src_width);
 
+    // CPU: Calculate affine transformation matrix (s2d and d2s)
+    float scale = std::min(dst_height / (float)src_height, dst_width / (float)src_width);
     s2d.value[0] = scale;
     s2d.value[1] = 0;
     s2d.value[2] = -scale * src_width * 0.5 + dst_width * 0.5;
@@ -117,15 +122,17 @@ void cuda_preprocess(
 
     cv::Mat m2x3_s2d(2, 3, CV_32F, s2d.value);
     cv::Mat m2x3_d2s(2, 3, CV_32F, d2s.value);
-    cv::invertAffineTransform(m2x3_s2d, m2x3_d2s);
 
+    // CPU: Invert the affine transformation matrix
+    cv::invertAffineTransform(m2x3_s2d, m2x3_d2s);
     memcpy(d2s.value, m2x3_d2s.ptr<float>(0), sizeof(d2s.value));
 
-    int jobs = dst_height * dst_width;
-    int threads = 256;
-    int blocks = ceil(jobs / (float)threads);
+    int jobs = dst_height * dst_width; // 總像素數量
+    int threads = 256;                // 每個 block 的執行緒數量
+    int blocks = ceil(jobs / (float)threads); // 所需的 block 數量
 
-    warpaffine_kernel << <blocks, threads, 0, stream >> > (
+    // GPU: Perform warp affine transformation and normalization
+    warpaffine_kernel<<<blocks, threads, 0, stream>>>(
         img_buffer_device, src_width * 3, src_width,
         src_height, dst, dst_width,
         dst_height, 128, d2s, jobs);
