@@ -14,7 +14,13 @@
 #endif
 #include <filesystem>
 
-class YoloLogger::Impl {
+static bool g_consoleOnly = false;
+
+void AILogger::setConsoleOnly(bool enable) {
+    g_consoleOnly = enable;
+}
+
+class AILogger::Impl {
 public:
     Impl(const std::string& logFilePath)
         : logFilePath_(logFilePath), maxFileSize_(10 * 1024 * 1024) // 10MB
@@ -30,10 +36,12 @@ public:
 
     void log(LogLevel level, const std::string& file, int line, const std::string& message) {
         std::lock_guard<std::mutex> lock(mtx);
-        rotateIfNeeded();
         std::string logStr = formatLog(level, file, line, message);
-        logFile << logStr << std::endl;
-        std::cout << logStr << std::endl; // 同時印出到 console
+        if (!g_consoleOnly) {
+            rotateIfNeeded();
+            logFile << logStr << std::endl;
+        }
+        std::cout << logStr << std::endl;
     }
 
 private:
@@ -98,22 +106,22 @@ private:
     }
 };
 
-static std::unique_ptr<YoloLogger> g_logger;
+static std::unique_ptr<AILogger> g_logger;
 
-void YoloLogger::init(const std::string& logFilePath) {
-    g_logger.reset(new YoloLogger(logFilePath));
+void AILogger::init(const std::string& logFilePath) {
+    g_logger.reset(new AILogger(logFilePath));
 }
 
-YoloLogger& YoloLogger::instance() {
+AILogger& AILogger::instance() {
     if (!g_logger) {
-        throw std::runtime_error("YoloLogger not initialized. Call YoloLogger::init() first.");
+        throw std::runtime_error("AILogger not initialized. Call AILogger::init() first.");
     }
     return *g_logger;
 }
 
-YoloLogger::YoloLogger(const std::string& logFilePath) : pImpl(new Impl(logFilePath)) {}
-YoloLogger::~YoloLogger() = default;
+AILogger::AILogger(const std::string& logFilePath) : pImpl(new Impl(logFilePath)) {}
+AILogger::~AILogger() = default;
 
-void YoloLogger::log(LogLevel level, const std::string& file, int line, const std::string& message) {
+void AILogger::log(LogLevel level, const std::string& file, int line, const std::string& message) {
     pImpl->log(level, file, line, message);
 }

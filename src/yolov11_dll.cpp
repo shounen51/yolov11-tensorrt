@@ -28,7 +28,7 @@ static uint8_t* yuv_buffer_device = nullptr;
 uint8_t* GetYuvGpuBuffer(uint8_t* yuv, int width, int height) {
     int img_size = width * height * 3 / 2 * sizeof(uint8_t);
     if (img_size > default_yuv_size) {
-        LOG_INFO("YUV buffer size changed from " + std::to_string(default_yuv_size) + " to " + std::to_string(img_size));
+        AILOG_INFO("YUV buffer size changed from " + std::to_string(default_yuv_size) + " to " + std::to_string(img_size));
         if (yuv_buffer_host) delete[] yuv_buffer_host;
         yuv_buffer_host = new uint8_t[img_size];
         if (yuv_buffer_device) CUDA_CHECK(cudaFree(yuv_buffer_device));
@@ -36,7 +36,7 @@ uint8_t* GetYuvGpuBuffer(uint8_t* yuv, int width, int height) {
         default_yuv_size = img_size;
     }
     if (yuv_buffer_device == nullptr) {
-        LOG_INFO("Allocating GPU YUV buffer of size: " + std::to_string(default_yuv_size));
+        AILOG_INFO("Allocating GPU YUV buffer of size: " + std::to_string(default_yuv_size));
         CUDA_CHECK(cudaMalloc(&yuv_buffer_device, default_yuv_size));
     }
     memcpy(yuv_buffer_host, yuv, img_size);
@@ -46,7 +46,7 @@ uint8_t* GetYuvGpuBuffer(uint8_t* yuv, int width, int height) {
 }
 
 void infernce_thread() {
-    LOG_INFO("Inference thread started.");
+    AILOG_INFO("Inference thread started.");
     colorClassfer.setDefaultColorRange();
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
@@ -144,26 +144,16 @@ void infernce_thread() {
     }
 }
 extern "C" {
-    YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold) {
-        // 取得 userprofile 路徑
-        std::string logPath;
-    #if defined(_WIN32)
-        char* userProfile = std::getenv("USERPROFILE");
-        if (userProfile) {
-            logPath = std::string(userProfile) + "\\AppData\\Local\\3S\\AIDLL\\log.log";
-        } else {
-            logPath = "log.log";
+    YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold, const char* logFilePath) {
+        AILogger::init(std::string(logFilePath));
+        if (std::string(logFilePath) == "") {
+            AILOG_INFO("No log file path specified, using default console logging.");
+            AILogger::setConsoleOnly(true); // 如果沒有指定 logFilePath，則只輸出到 console
         }
-    #else
-        const char* home = std::getenv("HOME");
-        if (home) {
-            logPath = std::string(home) + "/.local/share/3S/AIDLL/log.log";
-        } else {
-            logPath = "log.log";
+        else {
+            AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
-    #endif
-        YoloLogger::init(logPath);
-        LOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
+        AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
         model = std::make_unique<YOLOv11>(engine_path, conf_threshold, logger);
 
         // 啟動執行緒執行 infernce_thread
@@ -175,14 +165,14 @@ extern "C" {
 
     YOLOV11_API int svObjectModules_inputImageYUV(unsigned char* image_data, int width, int height, int channels, int max_output) {
         if (!model){
-            LOG_WARN("Model not initialized. Call svCreate_ObjectModules first.");
+            AILOG_WARN("Model not initialized. Call svCreate_ObjectModules first.");
             return 0;
         }
         std::lock_guard<std::mutex> lock(queueMutex);
         inputQueue.push({image_data, width, height, channels, max_output});
         inputQueueCondition.notify_one();
         if (inputQueue.size() > 100)
-            LOG_WARN("Input queue size exceeds 100, input too fast.");
+            AILOG_WARN("Input queue size exceeds 100, input too fast.");
         return 1;
     }
 
@@ -191,7 +181,7 @@ extern "C" {
         if (wait) {
             // 等待直到有結果可用
             if (outputQueue.empty())
-                // LOG_INFO("Waiting for output queue to have results.");
+                // AILOG_INFO("Waiting for output queue to have results.");
                 outputQueueCondition.wait(lock, [] { return !outputQueue.empty() || stopThread; });
         }
         if (stopThread || outputQueue.empty()) return -1;
@@ -213,7 +203,7 @@ extern "C" {
         if (inferenceThread.joinable()) {
             inferenceThread.join();
         }
-        LOG_INFO("Inference thread stopped.");
+        AILOG_INFO("Inference thread stopped.");
         model.reset();
     }
 }

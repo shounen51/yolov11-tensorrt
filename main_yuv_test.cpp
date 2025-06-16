@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     cout << "Engine path: " << engine_path << endl;
     cout << "Image path: " << image_path << endl;
     // API 1: Initialize the model
-    svCreate_ObjectModules(engine_path, 0.3f);
+    svCreate_ObjectModules(engine_path, 0.3f, "./log.log");
     // load yuv image as a uint8_t array
     std::ifstream file(image_path, std::ios::binary);
     file.seekg(0, std::ios::end);

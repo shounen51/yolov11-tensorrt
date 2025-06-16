@@ -4,25 +4,28 @@
 
 enum class LogLevel { DEBUG, INFO, WARN, ERROR };
 
-class YoloLogger {
+class AILogger {
 public:
     static void init(const std::string& logFilePath);
-    static YoloLogger& instance();
+    static AILogger& instance();
+
+    // 設定只輸出到 console
+    static void setConsoleOnly(bool enable);
 
     void log(LogLevel level, const std::string& file, int line, const std::string& message);
 
     // Convenience macros for logging with file and line info
-    #define LOG_DEBUG(msg) YoloLogger::instance().log(LogLevel::DEBUG, __FILE__, __LINE__, msg)
-    #define LOG_INFO(msg)  YoloLogger::instance().log(LogLevel::INFO,  __FILE__, __LINE__, msg)
-    #define LOG_WARN(msg)  YoloLogger::instance().log(LogLevel::WARN,  __FILE__, __LINE__, msg)
-    #define LOG_ERROR(msg) YoloLogger::instance().log(LogLevel::ERROR, __FILE__, __LINE__, msg)
+    #define AILOG_DEBUG(msg) AILogger::instance().log(LogLevel::DEBUG, __FILE__, __LINE__, msg)
+    #define AILOG_INFO(msg)  AILogger::instance().log(LogLevel::INFO,  __FILE__, __LINE__, msg)
+    #define AILOG_WARN(msg)  AILogger::instance().log(LogLevel::WARN,  __FILE__, __LINE__, msg)
+    #define AILOG_ERROR(msg) AILogger::instance().log(LogLevel::ERROR, __FILE__, __LINE__, msg)
 
-    ~YoloLogger(); // <-- 移到 public
+    ~AILogger();
 
 private:
-    YoloLogger(const std::string& logFilePath);
-    YoloLogger(const YoloLogger&) = delete;
-    YoloLogger& operator=(const YoloLogger&) = delete;
+    AILogger(const std::string& logFilePath);
+    AILogger(const AILogger&) = delete;
+    AILogger& operator=(const AILogger&) = delete;
 
     class Impl;
     std::unique_ptr<Impl> pImpl;

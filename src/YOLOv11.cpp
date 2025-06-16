@@ -25,7 +25,7 @@ YOLOv11::YOLOv11(string model_path, float conf_threshold, nvinfer1::ILogger& log
     // Build an engine from an onnx model
     else
     {
-        LOG_INFO("Build an engine from an onnx model");
+        AILOG_INFO("Build an engine from an onnx model");
         build(model_path, logger);
         saveEngine(model_path);
     }
@@ -82,7 +82,7 @@ void YOLOv11::init(std::string engine_path, float conf_threshold, nvinfer1::ILog
         for (int i = 0; i < 10; i++) {
             this->infer();
         }
-        LOG_INFO("model warmup 10 times");
+        AILOG_INFO("model warmup 10 times");
     }
 }
 
@@ -110,7 +110,7 @@ YOLOv11::~YOLOv11()
 uint8_t* YOLOv11::getGpuRgbBuffer(int width, int height) {
     int img_size = width * height * 3 * sizeof(uint8_t); // YUV420 size
     if (img_size > gpu_rgb_buffer_size) {
-        LOG_INFO("RGB buffer size changed from " + std::to_string(gpu_rgb_buffer_size) + " to " + std::to_string(img_size));
+        AILOG_INFO("RGB buffer size changed from " + std::to_string(gpu_rgb_buffer_size) + " to " + std::to_string(img_size));
         if (gpu_rgb_buffer) {
             CUDA_CHECK(cudaFree(gpu_rgb_buffer));
         }
@@ -118,7 +118,7 @@ uint8_t* YOLOv11::getGpuRgbBuffer(int width, int height) {
         gpu_rgb_buffer_size = img_size;
     }
     if (gpu_rgb_buffer == nullptr) {
-        LOG_INFO("Allocating GPU RGB buffer of size: " + std::to_string(gpu_rgb_buffer_size));
+        AILOG_INFO("Allocating GPU RGB buffer of size: " + std::to_string(gpu_rgb_buffer_size));
         CUDA_CHECK(cudaMalloc(&gpu_rgb_buffer, gpu_rgb_buffer_size));
     }
     return gpu_rgb_buffer;
@@ -215,17 +215,17 @@ void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)
     IBuilderConfig* config = builder->createBuilderConfig();
     if (isFP16)
     {
-        LOG_INFO("FP16");
+        AILOG_INFO("FP16");
         config->setFlag(BuilderFlag::kFP16);
     }
     nvonnxparser::IParser* parser = nvonnxparser::createParser(*network, logger);
     bool parsed = parser->parseFromFile(onnxPath.c_str(), static_cast<int>(nvinfer1::ILogger::Severity::kINFO));
     IHostMemory* plan{ builder->buildSerializedNetwork(*network, *config) };
-    LOG_INFO("createInferRuntime");
+    AILOG_INFO("createInferRuntime");
     runtime = createInferRuntime(logger);
-    LOG_INFO("deserializeCudaEngine");
+    AILOG_INFO("deserializeCudaEngine");
     engine = runtime->deserializeCudaEngine(plan->data(), plan->size());
-    LOG_INFO("createExecutionContext");
+    AILOG_INFO("createExecutionContext");
     context = engine->createExecutionContext();
 
     delete network;
@@ -255,7 +255,7 @@ bool YOLOv11::saveEngine(const std::string& onnxpath)
         file.open(engine_path, std::ios::binary | std::ios::out);
         if (!file.is_open())
         {
-            LOG_INFO("Create engine file" + engine_path + " failed");
+            AILOG_INFO("Create engine file" + engine_path + " failed");
             return 0;
         }
         file.write((const char*)data->data(), data->size());

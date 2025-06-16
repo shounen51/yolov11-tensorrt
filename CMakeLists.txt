@@ -59,10 +59,11 @@ target_link_libraries(yolov11
 message(STATUS "COMMON_SOURCES: ${COMMON_SOURCES}")
 # === Test executable ===
 set(EXEC_SOURCES
-    main_yuv_test.cpp
+    main.cpp
+    src/Logger.cpp
     src/ColorClassifier/ColorClassifier.cpp
     src/YUV420ToRGB/YUV420ToRGB.cu
 )
 
-add_executable(yolov11_test_yuv ${EXEC_SOURCES})
-target_link_libraries(yolov11_test_yuv yolov11 ${OpenCV_LIBS})
+add_executable(yolov11_dll ${EXEC_SOURCES})
+target_link_libraries(yolov11_dll yolov11 ${OpenCV_LIBS})

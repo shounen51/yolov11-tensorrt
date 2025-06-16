@@ -40,7 +40,7 @@ typedef struct OutputData {
 /**
  * 初始化模型
  */
-YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold);
+YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold, const char* logFilePath = "");
 
 /**
  * 處理影像並輸出結果
