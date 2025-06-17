@@ -6,27 +6,53 @@
 using namespace std;
 using namespace cv;
 
-// usage: ./yolov11_test.exe <engine_path> <image_path> <width> <height> <log_file>
+// usage: ./yolov11_test.exe <engine_path> <yuv_path> <width> <height> <log_file>
 int main(int argc, char** argv) {
     const int MAX_OBJECTS = 100; // Maximum number of objects to detect
     svObjData_t results[MAX_OBJECTS];
     if (argc < 5) {
-        cout << "Usage: " << argv[0] << " <engine_path> <image_path> <width> <height> <log_file>" << endl;
+        cout << "Usage: " << argv[0] << " <engine_path> <yuv_path> <width> <height> <log_file>" << endl;
         return -1;
     }
     // Parse command line arguments
     const char* engine_path = argv[1];
-    const char* image_path = argv[2];
+    const char* yuv_path = argv[2];
     int width = std::stoi(argv[3]);
     int height = std::stoi(argv[4]);
     const char* log_file = "";
     if (argc >= 6) log_file = argv[5];
     cout << "Engine path: " << engine_path << endl;
-    cout << "Image path: " << image_path << endl;
+    cout << "Yuv path: " << yuv_path << endl;
+
+    // try to find same name .jpg image
+    std::string jpg_path = yuv_path;
+    size_t dot_pos = jpg_path.find_last_of('.');
+    if (dot_pos != std::string::npos) {
+        jpg_path.replace(dot_pos, jpg_path.length() - dot_pos, ".jpg");
+    } else {
+        jpg_path += ".jpg";
+    }
+    std::ifstream jpg_file(jpg_path, std::ios::binary);
+    if (!jpg_file.good()) {
+        jpg_path.clear();
+    }else{
+        cout << "Found jpg image: " << jpg_path << endl;
+    }
+    jpg_file.close();
+    Mat img;
+    if (!jpg_path.empty()) {
+        // Load jpg image
+        img = imread(jpg_path);
+        if (img.empty()) {
+            cerr << "Failed to load jpg image: " << jpg_path << endl;
+            return -1;
+        }
+    }
+
     // API 1: Initialize the model
     svCreate_ObjectModules(engine_path, 0.3f, log_file); // log_file can be empty
     // load yuv image as a uint8_t array
-    std::ifstream file(image_path, std::ios::binary);
+    std::ifstream file(yuv_path, std::ios::binary);
     file.seekg(0, std::ios::end);
     size_t fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
@@ -60,20 +86,25 @@ int main(int argc, char** argv) {
     cout << "Detected " << num << " objects.\n";
     for (int i = 0; i < num; ++i) {
         auto& r = results[i];
-        // if (r.class_id != 0) continue; // only show class "person on wheelchair"
+        if (r.class_id != 0) continue; // only show class "person"
         cout << "Class: " << r.class_id
                 << ", Conf: " << r.confidence
                 << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
                 << "," << r.bbox_xmax << "," << r.bbox_ymax << "]"
                 << ", Color_upper: " << std::string(r.color_label_upper)
                 << ", Color_lower: " << std::string(r.color_label_lower) << "\n";
-        // rectangle(frame, Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
-        //                             Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)),
-        //             Scalar(0, 255, 0), 2);
-        // putText(frame, std::string(r.color_label), Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows - 10),
-        //         FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
+        if (img.empty()) continue; // skip drawing if no jpg image is found
+        // Draw bounding box and label on the image
+        rectangle(img, Rect(Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows),
+                                    Point(r.bbox_xmax*img.cols, r.bbox_ymax*img.rows)),
+                    Scalar(0, 255, 0), 2);
+        putText(img, std::string(r.color_label_upper), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
+                FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
     }
-    // imshow("Result", frame);
+    if (!img.empty()) {
+        imshow("Result", img);
+        waitKey(0);
+    }
     delete[] frame;
 
     return 0;
