@@ -169,7 +169,11 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.y = static_cast<int>((cy - 0.5 * oh));
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
-            if (box.width > 0.5*640 || box.height > 0.5*640) continue;
+            if (box.width > 0.5*640 || box.height > 0.5*640){
+                // filter out large boxes
+                AILOG_INFO("Filter out large box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
+                continue;
+            }
             if (class_id_point.y == person_on_wheelchart_class_id){ // pw special
                 boxes_pw.push_back(box); // pw special
                 class_ids_pw.push_back(class_id_point.y); // pw special

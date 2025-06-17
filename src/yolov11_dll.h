@@ -13,7 +13,8 @@ typedef struct svResultProjectObject_DataType
     svResultProjectObject_DataType()
         : bbox_xmin(0.0f), bbox_ymin(0.0f), bbox_xmax(0.0f), bbox_ymax(0.0f),
           confidence(0.0f), class_id(-1) {
-        color_label[0] = '\0'; // 初始化為空字串
+        color_label_upper[0] = '\0';
+        color_label_lower[0] = '\0';
     }
     float bbox_xmin;
     float bbox_ymin;
@@ -21,7 +22,8 @@ typedef struct svResultProjectObject_DataType
     float bbox_ymax;
     float confidence;
     int class_id;
-    char color_label[256]; // 使用固定大小的字符数组
+    char color_label_upper[256]; // 使用固定大小的字符数组
+    char color_label_lower[256]; // 使用固定大小的字符数组
 } svObjData_t;
 
 typedef struct InputData {

@@ -72,7 +72,7 @@ void infernce_thread() {
         std::vector<Detection> detections;
 
         model->preprocess(gpu_rgb_buffer, input.width, input.height, false);
-        // 利用空檔時間將 GPU buffer 從 device 轉成 Mat
+        // 利用 CPU 空檔時間將 GPU buffer 從 device 轉成 Mat
         std::vector<uint8_t> rgb_host(input.width * input.height * 3);
         CUDA_CHECK(cudaMemcpy(rgb_host.data(), gpu_rgb_buffer, input.width * input.height * 3 * sizeof(uint8_t), cudaMemcpyDeviceToHost));
         cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
@@ -105,19 +105,27 @@ void infernce_thread() {
             float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
 
             // 計算顏色
-            cv::Mat personCrop = rgb_image(Rect(Point(x1, y1),
-                                            Point(x2, y2)));
-            cv::cvtColor(personCrop, personCrop, cv::COLOR_BGR2RGB); // 將 BGR 轉換為 RGB
-            vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
-            int maxIndex = 0;
-            int maxCount = 0;
-            for (int j = 0; j < color.size(); j++) {
-                if (color[j] > maxCount) {
-                    maxCount = color[j];
-                    maxIndex = j;
+            std::vector<std::vector<float>> box_points = {
+                {0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}
+            }; // 暫時先以vector放在這邊
+            std::vector<std::string> color_labels;
+            for (auto& point : box_points) {
+                // std::cout << x1 + (det.bbox.width*point[0])/r << ", " << y1+(det.bbox.height*point[1])/r << ", "
+                //           << x1+(det.bbox.width*point[2])/r << ", " << y1+(det.bbox.height*point[3])/r << std::endl;
+                cv::Mat personCrop = rgb_image(Rect(Point(x1 + (det.bbox.width*point[0])/r, y1 + (det.bbox.height*point[1])/r),
+                                                    Point(x1 + (det.bbox.width*point[2])/r, y1 + (det.bbox.height*point[3])/r)));
+                cv::cvtColor(personCrop, personCrop, cv::COLOR_BGR2RGB); // 將 BGR 轉換為 RGB
+                vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
+                int maxIndex = 0;
+                int maxCount = 0;
+                for (int j = 0; j < color.size(); j++) {
+                    if (color[j] > maxCount) {
+                        maxCount = color[j];
+                        maxIndex = j;
+                    }
                 }
+                color_labels.push_back(ColorLabelsString[maxIndex]);
             }
-            string colorStr = ColorLabelsString[maxIndex];
 
             // 正規化成 [0~1]
             x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
@@ -132,8 +140,10 @@ void infernce_thread() {
             output[i].bbox_ymax = y2;
             output[i].class_id = det.class_id;
             output[i].confidence = det.conf;
-            strncpy(output[i].color_label, colorStr.c_str(), sizeof(output[i].color_label) - 1);
-            output[i].color_label[sizeof(output[i].color_label) - 1] = '\0'; // 確保以空字元結尾
+            strncpy(output[i].color_label_upper, color_labels[0].c_str(), sizeof(output[i].color_label_upper) - 1);
+            strncpy(output[i].color_label_lower, color_labels[1].c_str(), sizeof(output[i].color_label_lower) - 1);
+            output[i].color_label_upper[sizeof(output[i].color_label_upper) - 1] = '\0'; // 確保以空字元結尾
+            output[i].color_label_lower[sizeof(output[i].color_label_lower) - 1] = '\0'; // 確保以空字元結尾
         }
 
         // 將結果放入 outputQueue

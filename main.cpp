@@ -65,7 +65,8 @@ int main(int argc, char** argv) {
                 << ", Conf: " << r.confidence
                 << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
                 << "," << r.bbox_xmax << "," << r.bbox_ymax << "]"
-                << ", Color: " << std::string(r.color_label) << "\n";
+                << ", Color_upper: " << std::string(r.color_label_upper)
+                << ", Color_lower: " << std::string(r.color_label_lower) << "\n";
         // rectangle(frame, Rect(Point(r.bbox_xmin*frame.cols, r.bbox_ymin*frame.rows),
         //                             Point(r.bbox_xmax*frame.cols, r.bbox_ymax*frame.rows)),
         //             Scalar(0, 255, 0), 2);
