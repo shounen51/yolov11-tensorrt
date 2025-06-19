@@ -86,19 +86,19 @@ int main(int argc, char** argv) {
     cout << "Detected " << num << " objects.\n";
     for (int i = 0; i < num; ++i) {
         auto& r = results[i];
-        if (r.class_id != 0) continue; // only show class "person"
+        // if (r.class_id != 0) continue; // only show class "person"
         cout << "Class: " << r.class_id
                 << ", Conf: " << r.confidence
                 << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
                 << "," << r.bbox_xmax << "," << r.bbox_ymax << "]"
-                << ", Color_upper: " << std::string(r.color_label_upper)
-                << ", Color_lower: " << std::string(r.color_label_lower) << "\n";
+                << ", Color_first: " << std::string(r.color_label_first)
+                << ", Color_second: " << std::string(r.color_label_second) << "\n";
         if (img.empty()) continue; // skip drawing if no jpg image is found
         // Draw bounding box and label on the image
         rectangle(img, Rect(Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows),
                                     Point(r.bbox_xmax*img.cols, r.bbox_ymax*img.rows)),
                     Scalar(0, 255, 0), 2);
-        putText(img, std::string(r.color_label_upper), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
+        putText(img, std::string(r.color_label_first), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
     }
     if (!img.empty()) {

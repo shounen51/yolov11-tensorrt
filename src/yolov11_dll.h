@@ -1,4 +1,5 @@
 #pragma once
+#include <memory>
 
 #ifdef YOLOV11_EXPORTS
 #define YOLOV11_API __declspec(dllexport)
@@ -13,8 +14,10 @@ typedef struct svResultProjectObject_DataType
     svResultProjectObject_DataType()
         : bbox_xmin(0.0f), bbox_ymin(0.0f), bbox_xmax(0.0f), bbox_ymax(0.0f),
           confidence(0.0f), class_id(-1) {
-        color_label_upper[0] = '\0';
-        color_label_lower[0] = '\0';
+        strncpy(color_label_first, "none", sizeof(color_label_first));
+        color_label_first[sizeof(color_label_first) - 1] = '\0';
+        strncpy(color_label_second, "none", sizeof(color_label_second));
+        color_label_second[sizeof(color_label_second) - 1] = '\0';
     }
     float bbox_xmin;
     float bbox_ymin;
@@ -22,8 +25,8 @@ typedef struct svResultProjectObject_DataType
     float bbox_ymax;
     float confidence;
     int class_id;
-    char color_label_upper[256]; // 使用固定大小的字符数组
-    char color_label_lower[256]; // 使用固定大小的字符数组
+    char color_label_first[256];
+    char color_label_second[256];
 } svObjData_t;
 
 typedef struct InputData {

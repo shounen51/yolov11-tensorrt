@@ -105,9 +105,9 @@ void infernce_thread() {
             float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
 
             // 計算顏色
-            std::vector<std::vector<float>> box_points = {
-                {0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}
-            }; // 暫時先以vector放在這邊
+            std::vector<std::vector<float>> box_points = {{0, 0, 1, 1}}; // 預設為整個 bbox
+            if (det.class_id == model->person_class_id)
+                box_points = {{0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}}; // 如果類別是人則分上半身和下半身
             std::vector<std::string> color_labels;
             for (auto& point : box_points) {
                 // std::cout << x1 + (det.bbox.width*point[0])/r << ", " << y1+(det.bbox.height*point[1])/r << ", "
@@ -140,10 +140,11 @@ void infernce_thread() {
             output[i].bbox_ymax = y2;
             output[i].class_id = det.class_id;
             output[i].confidence = det.conf;
-            strncpy(output[i].color_label_upper, color_labels[0].c_str(), sizeof(output[i].color_label_upper) - 1);
-            strncpy(output[i].color_label_lower, color_labels[1].c_str(), sizeof(output[i].color_label_lower) - 1);
-            output[i].color_label_upper[sizeof(output[i].color_label_upper) - 1] = '\0'; // 確保以空字元結尾
-            output[i].color_label_lower[sizeof(output[i].color_label_lower) - 1] = '\0'; // 確保以空字元結尾
+            strncpy(output[i].color_label_first, color_labels[0].c_str(), sizeof(output[i].color_label_first) - 1);
+            if (det.class_id == model->person_class_id)
+                strncpy(output[i].color_label_second, color_labels[1].c_str(), sizeof(output[i].color_label_second) - 1);
+            output[i].color_label_first[sizeof(output[i].color_label_first) - 1] = '\0'; // 確保以空字元結尾
+            output[i].color_label_second[sizeof(output[i].color_label_second) - 1] = '\0'; // 確保以空字元結尾
         }
 
         // 將結果放入 outputQueue
