@@ -45,12 +45,12 @@ enum ColorLabels : unsigned char
     color_red, color_orange, color_brown, color_yellow, color_green, color_cyan, color_blue, color_purple   // IsColor
 };
 
-class HLSColorClassifier
+class HSVColorClassifier
 {
 public:
-    HLSColorClassifier();
-    HLSColorClassifier(std::vector<ColorRange> colorRangeMap);
-    ~HLSColorClassifier();
+    HSVColorClassifier();
+    HSVColorClassifier(std::vector<ColorRange> colorRangeMap);
+    ~HSVColorClassifier();
 
     std::vector<unsigned char> classify(Color_t color);
     std::vector<std::vector<unsigned char>> classify(unsigned char *array, unsigned int size, int *maxLabelCount=(int *)0);

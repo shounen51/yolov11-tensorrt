@@ -13,7 +13,7 @@ static Logger logger;
 static std::thread inferenceThread; // 用於執行 inference_thread 的執行緒
 static bool stopThread = false;     // 用於控制執行緒的停止
 
-static HLSColorClassifier colorClassfer;
+static HSVColorClassifier colorClassfer;
 
 static std::queue<InputData> inputQueue;
 static std::queue<OutputData> outputQueue;
@@ -114,12 +114,12 @@ void infernce_thread() {
                 //           << x1+(det.bbox.width*point[2])/r << ", " << y1+(det.bbox.height*point[3])/r << std::endl;
                 cv::Mat personCrop = rgb_image(Rect(Point(x1 + (det.bbox.width*point[0])/r, y1 + (det.bbox.height*point[1])/r),
                                                     Point(x1 + (det.bbox.width*point[2])/r, y1 + (det.bbox.height*point[3])/r)));
-                cv::cvtColor(personCrop, personCrop, cv::COLOR_BGR2RGB); // 將 BGR 轉換為 RGB
-                vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HLS);
+
+                vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HSV);
                 int maxIndex = 0;
                 int maxCount = 0;
                 for (int j = 0; j < color.size(); j++) {
-                    if (color[j] > maxCount) {
+                    if (color[j] > maxCount && ColorLabelsString[j] != "unknow") {
                         maxCount = color[j];
                         maxIndex = j;
                     }

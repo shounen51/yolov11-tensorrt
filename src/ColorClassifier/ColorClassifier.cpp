@@ -98,21 +98,21 @@ ColorRange operator & (const ColorRange& a, const ColorRange& b)
 
 
 
-HLSColorClassifier::HLSColorClassifier()
+HSVColorClassifier::HSVColorClassifier()
 {
 
 }
-HLSColorClassifier::HLSColorClassifier(std::vector<ColorRange> colorRangeMap)
+HSVColorClassifier::HSVColorClassifier(std::vector<ColorRange> colorRangeMap)
 {
     this->colorRangeMap = colorRangeMap;
     checkRangeHaveIntersect();
 }
-HLSColorClassifier::~HLSColorClassifier()
+HSVColorClassifier::~HSVColorClassifier()
 {
 
 }
 
-std::vector<unsigned char> HLSColorClassifier::classify(Color_t color)
+std::vector<unsigned char> HSVColorClassifier::classify(Color_t color)
 {
     std::vector<unsigned char> output_colorLabels;
     std::vector<int> candidateColorIdxList;
@@ -160,7 +160,7 @@ std::vector<unsigned char> HLSColorClassifier::classify(Color_t color)
     return output_colorLabels;
 }
 
-std::vector<std::vector<unsigned char>> HLSColorClassifier::classify(unsigned char *array, unsigned int size, int *maxLabelCount)
+std::vector<std::vector<unsigned char>> HSVColorClassifier::classify(unsigned char *array, unsigned int size, int *maxLabelCount)
 {
     std::vector<std::vector<unsigned char>> result;
     if (size % 3 != 0)
@@ -180,7 +180,7 @@ std::vector<std::vector<unsigned char>> HLSColorClassifier::classify(unsigned ch
     return result;
 }
 
-std::vector<unsigned char> HLSColorClassifier::classifyStatistics(cv::Mat image, int sampleNumber, int cvtColorCode, cv::Mat mask, bool usePercent)
+std::vector<unsigned char> HSVColorClassifier::classifyStatistics(cv::Mat image, int sampleNumber, int cvtColorCode, cv::Mat mask, bool usePercent)
 {
     std::vector<unsigned char> result;
     if (image.channels() != 3)
@@ -235,7 +235,7 @@ std::vector<unsigned char> HLSColorClassifier::classifyStatistics(cv::Mat image,
     }
 
     // classify color
-    cv::cvtColor(sampleImg, sampleImg, cvtColorCode);
+    cv::cvtColor(sampleImg, sampleImg, cvtColorCode); // 建議呼叫時傳 cv::COLOR_BGR2HSV
     result_f.assign(maxColorLabelNum + 1, 0.0f);
     cv::Vec3b *ptrImg = sampleImg.ptr<cv::Vec3b>(0,0);
     uchar *ptrMask = sampleMask.ptr<uchar>(0,0);
@@ -272,39 +272,42 @@ std::vector<unsigned char> HLSColorClassifier::classifyStatistics(cv::Mat image,
 }
 
 
-void HLSColorClassifier::setNewColorRange(std::vector<ColorRange> colorRangeMap)
+void HSVColorClassifier::setNewColorRange(std::vector<ColorRange> colorRangeMap)
 {
     this->colorRangeMap.clear();
     this->colorRangeMap = colorRangeMap;
     checkRangeHaveIntersect();
 }
 
-void HLSColorClassifier::setDefaultColorRange()
+void HSVColorClassifier::setDefaultColorRange()
 {
     colorRangeMap.clear();
     colorRangeMap = std::vector<ColorRange>{
 
-        ColorRange(Color_t(  0,   0,   0), Color_t(255,  30, 255), color_black ), // black
-        ColorRange(Color_t(  0,  14,   0), Color_t(255, 204,  50), color_gray  ), // gray
-        // ColorRange(Color_t(  0,   6,   0), Color_t(255, 204,  50), color_gray  ), // gray test
-        ColorRange(Color_t(  0, 180,   0), Color_t(255, 255, 255), color_white ), // white
+        // 這裡的範圍請依 HSV 空間調整（範例：OpenCV HSV H:0~180, S:0~255, V:0~255）
 
-        ColorRange(Color_t(  0,  14,  50), Color_t(  8, 204, 255), color_red   ), // red
-        ColorRange(Color_t(  8,  76,  50), Color_t( 21, 204, 255), color_orange), // orange
-        ColorRange(Color_t(  8,  14,  50), Color_t( 21,  76, 255), color_brown ), // brown
-        ColorRange(Color_t( 21,  14,  50), Color_t( 35, 204, 255), color_yellow), // yellow
-        ColorRange(Color_t( 35,  14,  50), Color_t( 80, 204, 255), color_green ), // green
-        ColorRange(Color_t( 80,  14,  50), Color_t( 95, 204, 255), color_cyan  ), // cyan
-        ColorRange(Color_t( 95,  14,  50), Color_t(130, 204, 255), color_blue  ), // blue
-        ColorRange(Color_t(130,  14,  50), Color_t(169, 204, 255), color_purple), // purple
-        ColorRange(Color_t(169,  14,  50), Color_t(180, 204, 255), color_red   ), // red
+        ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  60), color_black ), // black
+        ColorRange(Color_t(  0,   0,  61), Color_t(180,  80, 191), color_gray  ), // gray
+        ColorRange(Color_t(  0,   0, 192), Color_t(180,  50, 255), color_white ), // white
 
+        ColorRange(Color_t(  0,  60, 127), Color_t(  6, 255, 255), color_red   ), // red (low H)
+        ColorRange(Color_t(164,  60, 127), Color_t(180, 255, 255), color_red   ), // red (high H)
+        ColorRange(Color_t(  7, 178, 178), Color_t( 15, 255, 255), color_orange), // orange
+        ColorRange(Color_t(  7, 127,  90), Color_t( 20, 255, 178), color_brown ), // brown
+        ColorRange(Color_t(  7,  38, 217), Color_t( 20,  77, 255), color_brown ), // brown
+        ColorRange(Color_t( 20,  60,  80), Color_t( 34, 255, 255), color_yellow), // yellow
+        ColorRange(Color_t( 35,  60,  80), Color_t( 77, 255, 255), color_green ), // green
+        // ColorRange(Color_t( 78,    ,    ), Color_t(   , 204, 255), color_cyan  ), // cyan
+        ColorRange(Color_t( 78,  80,  85), Color_t(120, 255, 255), color_blue  ), // blue
+        ColorRange(Color_t(120, 216, 112), Color_t(127, 255, 255), color_blue  ), // blue
+        ColorRange(Color_t(120,  60, 112), Color_t(127, 215, 255), color_purple), // purple
+        ColorRange(Color_t(128,  60, 153), Color_t(163, 255, 255), color_purple), // purple
     };
 
     checkRangeHaveIntersect();
 }
 
-void HLSColorClassifier::checkRangeHaveIntersect()
+void HSVColorClassifier::checkRangeHaveIntersect()
 {
     maxColorLabelNum = 0;
     for (int i = 0; i < colorRangeMap.size(); i++)

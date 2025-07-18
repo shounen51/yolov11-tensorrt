@@ -1,7 +1,7 @@
 ﻿cmake_minimum_required(VERSION 3.12)
 project(yolov11-tensorrt)
 
-find_package(CUDA REQUIRED)
+# find_package(CUDA REQUIRED)
 # Find and include OpenCV
 set(OpenCV_DIR "C:/Program Files (x86)/opencv_cuda-4.6.0")
 find_package(OpenCV REQUIRED)
@@ -10,6 +10,8 @@ find_package(OpenCV REQUIRED)
 set(CMAKE_CXX_STANDARD 17)
 
 # Include directories
+message(STATUS "OpenCV_INCLUDE_DIRS: ${OpenCV_INCLUDE_DIRS}")
+message(STATUS "CUDA_INCLUDE_DIRS: ${CUDA_INCLUDE_DIRS}")
 include_directories(${CUDA_INCLUDE_DIRS})
 include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)

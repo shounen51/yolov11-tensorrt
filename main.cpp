@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
     // test mutiple times
     auto t1 = chrono::high_resolution_clock::now();
     int num = 0;
-    int num_tests = 1000;
+    int num_tests = 10;
     for (int i = 0; i < num_tests; ++i) {
         // API 2: Process yuv image
         int ok = svObjectModules_inputImageYUV(frame, width, height, 3, MAX_OBJECTS);
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     cout << "Detected " << num << " objects.\n";
     for (int i = 0; i < num; ++i) {
         auto& r = results[i];
-        // if (r.class_id != 0) continue; // only show class "person"
+        if (r.class_id != 0) continue; // only show class "person"
         cout << "Class: " << r.class_id
                 << ", Conf: " << r.confidence
                 << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
