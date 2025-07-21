@@ -23,8 +23,8 @@ cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
     }
     cv::fillConvexPoly(mask, scaled_points, cv::Scalar(255));
     // show mask for debugging
-    cv::imshow("ROI Mask", mask);
-    cv::waitKey(1); // 確保 mask 能夠顯示出來
+    // cv::imshow("ROI Mask", mask);
+    // cv::waitKey(1); // 確保 mask 能夠顯示出來
     return mask;
 }
 
