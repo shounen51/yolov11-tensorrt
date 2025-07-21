@@ -30,6 +30,7 @@ set(COMMON_SOURCES
     src/yolov11.cpp
     src/Logger.cpp
     src/preprocess.cu
+    src/detection_color_thread.cpp
     src/ColorClassifier/ColorClassifier.cpp
     src/YUV420ToRGB/YUV420ToRGB.cu
 )
@@ -41,6 +42,7 @@ set(COMMON_HEADERS
     src/cuda_utils.h
     src/preprocess.h
     src/common.h
+    src/detection_color_thread.h
     src/ColorClassifier/ColorClassifier.h
     src/YUV420ToRGB/YUV420ToRGB.h
 )

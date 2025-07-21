@@ -4,158 +4,32 @@
 #include "ColorClassifier.h"
 #include "YUV420ToRGB.h"
 #include "Logger.h"
+#include "detection_color_thread.h"
 #include <cuda_utils.h>
 #include <memory>
 #include <opencv2/opencv.hpp>
 
-static std::unique_ptr<YOLOv11> model;
-static Logger logger;
-static std::thread inferenceThread; // 用於執行 inference_thread 的執行緒
-static bool stopThread = false;     // 用於控制執行緒的停止
+std::unordered_map<int, ROI> roi_map;
 
-static HSVColorClassifier colorClassfer;
-
-static std::queue<InputData> inputQueue;
-static std::queue<OutputData> outputQueue;
-static std::mutex queueMutex;
-static std::condition_variable inputQueueCondition;
-static std::condition_variable outputQueueCondition;
-
-static int default_yuv_size = 1920*1920*3/2 * sizeof(uint8_t); // Example size for 1920x1920 YUV420 image
-static uint8_t* yuv_buffer_host = new uint8_t[default_yuv_size];
-static uint8_t* yuv_buffer_device = nullptr;
-
-uint8_t* GetYuvGpuBuffer(uint8_t* yuv, int width, int height) {
-    int img_size = width * height * 3 / 2 * sizeof(uint8_t);
-    if (img_size > default_yuv_size) {
-        AILOG_INFO("YUV buffer size changed from " + std::to_string(default_yuv_size) + " to " + std::to_string(img_size));
-        if (yuv_buffer_host) delete[] yuv_buffer_host;
-        yuv_buffer_host = new uint8_t[img_size];
-        if (yuv_buffer_device) CUDA_CHECK(cudaFree(yuv_buffer_device));
-        CUDA_CHECK(cudaMalloc(&yuv_buffer_device, img_size));
-        default_yuv_size = img_size;
+cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
+    cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
+    if (points.size() < 3) {
+        AILOG_ERROR("ROI points must be at least 3 to form a polygon.");
+        return mask;
     }
-    if (yuv_buffer_device == nullptr) {
-        AILOG_INFO("Allocating GPU YUV buffer of size: " + std::to_string(default_yuv_size));
-        CUDA_CHECK(cudaMalloc(&yuv_buffer_device, default_yuv_size));
+    std::vector<cv::Point> scaled_points;
+    for (const auto& pt : points) {
+        scaled_points.emplace_back(pt.x * width, pt.y * height);
     }
-    memcpy(yuv_buffer_host, yuv, img_size);
-    // Copy YUV data to device
-    CUDA_CHECK(cudaMemcpy(yuv_buffer_device, yuv_buffer_host, img_size, cudaMemcpyHostToDevice));
-    return yuv_buffer_device;
+    cv::fillConvexPoly(mask, scaled_points, cv::Scalar(255));
+    // show mask for debugging
+    cv::imshow("ROI Mask", mask);
+    cv::waitKey(1); // 確保 mask 能夠顯示出來
+    return mask;
 }
 
-void infernce_thread() {
-    AILOG_INFO("Inference thread started.");
-    colorClassfer.setDefaultColorRange();
-    cudaStream_t stream;
-    CUDA_CHECK(cudaStreamCreate(&stream));
-    while (!stopThread) {
-        std::unique_lock<std::mutex> lock(queueMutex);
-
-        // 如果 inputQueue 為空，則等待通知
-        inputQueueCondition.wait(lock, [] { return !inputQueue.empty() || stopThread; });
-
-        // 再次檢查條件，避免虛假喚醒
-        if (stopThread && inputQueue.empty()) break;
-
-        // 從 inputQueue 中取出資料
-        InputData input = inputQueue.front();
-        inputQueue.pop();
-        lock.unlock();
-        // 取得 GPU buffers
-        uint8_t* gpu_yuv_buffer = GetYuvGpuBuffer(input.image_data, input.width, input.height);
-        uint8_t* gpu_rgb_buffer = model->getGpuRgbBuffer(input.width, input.height);
-        // 將 yuv 轉換成 rgb
-        yuv420toRGBInPlace(gpu_yuv_buffer, input.width, input.height, gpu_rgb_buffer, stream);
-
-        std::vector<Detection> detections;
-
-        model->preprocess(gpu_rgb_buffer, input.width, input.height, false);
-        // 利用 CPU 空檔時間將 GPU buffer 從 device 轉成 Mat
-        std::vector<uint8_t> rgb_host(input.width * input.height * 3);
-        CUDA_CHECK(cudaMemcpy(rgb_host.data(), gpu_rgb_buffer, input.width * input.height * 3 * sizeof(uint8_t), cudaMemcpyDeviceToHost));
-        cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
-        // 等待 preprocess 完成
-        model->joinGPUStream();
-        model->infer();
-        model->postprocess(detections);
-
-        int count = std::min(static_cast<int>(detections.size()), input.max_output);
-
-        // YOLO input size（根據模型固定）
-        const int INPUT_W = model->input_w;
-        const int INPUT_H = model->input_h;
-
-        // 計算 resize 比例與 padding
-        float r = std::min(1.0f * INPUT_W / input.width, 1.0f * INPUT_H / input.height);
-        int unpad_w = static_cast<int>(r * input.width);
-        int unpad_h = static_cast<int>(r * input.height);
-        int pad_x = (INPUT_W - unpad_w) / 2;
-        int pad_y = (INPUT_H - unpad_h) / 2;
-        svObjData_t* output = new svObjData_t[count];
-
-        for (int i = 0; i < count; ++i) {
-            const auto& det = detections[i];
-
-            // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
-            float x1 = (det.bbox.x - pad_x) / r;
-            float y1 = (det.bbox.y - pad_y) / r;
-            float x2 = (det.bbox.x + det.bbox.width - pad_x) / r;
-            float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
-
-            // 計算顏色
-            std::vector<std::vector<float>> box_points = {{0, 0, 1, 1}}; // 預設為整個 bbox
-            if (det.class_id == model->person_class_id)
-                box_points = {{0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}}; // 如果類別是人則分上半身和下半身
-            std::vector<std::string> color_labels;
-            for (auto& point : box_points) {
-                // std::cout << x1 + (det.bbox.width*point[0])/r << ", " << y1+(det.bbox.height*point[1])/r << ", "
-                //           << x1+(det.bbox.width*point[2])/r << ", " << y1+(det.bbox.height*point[3])/r << std::endl;
-                cv::Mat personCrop = rgb_image(Rect(Point(x1 + (det.bbox.width*point[0])/r, y1 + (det.bbox.height*point[1])/r),
-                                                    Point(x1 + (det.bbox.width*point[2])/r, y1 + (det.bbox.height*point[3])/r)));
-
-                vector<unsigned char> color = colorClassfer.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HSV);
-                int maxIndex = 0;
-                int maxCount = 0;
-                for (int j = 0; j < color.size(); j++) {
-                    if (color[j] > maxCount && ColorLabelsString[j] != "unknow") {
-                        maxCount = color[j];
-                        maxIndex = j;
-                    }
-                }
-                color_labels.push_back(ColorLabelsString[maxIndex]);
-            }
-
-            // 正規化成 [0~1]
-            x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
-            y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
-            x2 = std::clamp(x2 / input.width, 0.0f, 1.0f);
-            y2 = std::clamp(y2 / input.height, 0.0f, 1.0f);
-
-            // 將結果放入 output
-            output[i].bbox_xmin = x1;
-            output[i].bbox_ymin = y1;
-            output[i].bbox_xmax = x2;
-            output[i].bbox_ymax = y2;
-            output[i].class_id = det.class_id;
-            output[i].confidence = det.conf;
-            strncpy(output[i].color_label_first, color_labels[0].c_str(), sizeof(output[i].color_label_first) - 1);
-            if (det.class_id == model->person_class_id)
-                strncpy(output[i].color_label_second, color_labels[1].c_str(), sizeof(output[i].color_label_second) - 1);
-            output[i].color_label_first[sizeof(output[i].color_label_first) - 1] = '\0'; // 確保以空字元結尾
-            output[i].color_label_second[sizeof(output[i].color_label_second) - 1] = '\0'; // 確保以空字元結尾
-        }
-
-        // 將結果放入 outputQueue
-        lock.lock();
-        outputQueue.push({output, count});
-        lock.unlock();
-        outputQueueCondition.notify_one(); // 通知等待的執行緒有新結果可用
-    }
-}
 extern "C" {
-    YOLOV11_API void svCreate_ObjectModules(const char* engine_path, float conf_threshold, const char* logFilePath) {
+    YOLOV11_API void svCreate_ObjectModules(const char* function, int camera_amount, const char* engine_path, float conf_threshold, const char* logFilePath) {
         AILogger::init(std::string(logFilePath));
         if (std::string(logFilePath) == "") {
             AILOG_INFO("No log file path specified, using default console logging.");
@@ -164,57 +38,101 @@ extern "C" {
         else {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
-        AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
-        model = std::make_unique<YOLOv11>(engine_path, conf_threshold, logger);
-
-        // 啟動執行緒執行 infernce_thread
-        stopThread = false;
-        inferenceThread = std::thread([]() {
-                infernce_thread();
-        });
+        if (std::string(function) == "yolo_color") {
+            AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
+            YoloWithColor::createModelAndStartThread(engine_path, camera_amount, conf_threshold, logFilePath);
+        }
     }
 
-    YOLOV11_API int svObjectModules_inputImageYUV(unsigned char* image_data, int width, int height, int channels, int max_output) {
-        if (!model){
-            AILOG_WARN("Model not initialized. Call svCreate_ObjectModules first.");
-            return 0;
+    YOLOV11_API int svObjectModules_inputImageYUV(const char* function, int camera_id, int roi_id,
+        unsigned char* image_data, int width, int height, int channels, int max_output) {
+
+        if (roi_map.find(roi_id) != roi_map.end()) {
+            ROI roi = roi_map[roi_id];
+            if (roi.width != width || roi.height != height) {
+                AILOG_WARN("ROI size does not match input image size, creating new ROI.");
+                std::vector<cv::Point2f> points;
+                for (int i = 0; i < roi.points.size(); ++i) {
+                    points.emplace_back(roi.points[i].x, roi.points[i].y);
+                }
+                cv::Mat mask = createROI(width, height, points);
+                roi_map[roi_id] = {mask, points, width, height};
+            }
+        }else {
+            AILOG_WARN("ROI with id " + std::to_string(roi_id) + " does not exist, ignoring.");
         }
-        std::lock_guard<std::mutex> lock(queueMutex);
-        inputQueue.push({image_data, width, height, channels, max_output});
-        inputQueueCondition.notify_one();
-        if (inputQueue.size() > 100)
-            AILOG_WARN("Input queue size exceeds 100, input too fast.");
+        if (std::string(function) == "yolo_color") {
+            if (YoloWithColor::stopThread || camera_id >= YoloWithColor::outputQueues.size()) return -1;
+            std::lock_guard<std::mutex> lock(YoloWithColor::inputQueueMutex);
+            YoloWithColor::inputQueue.push({camera_id, roi_id, image_data, width, height, channels, max_output});
+            YoloWithColor::inputQueueCondition.notify_one();
+            if (YoloWithColor::inputQueue.size() > 100)
+                AILOG_WARN("Input queue size exceeds 100, input too fast.");
+        }
         return 1;
     }
 
-    YOLOV11_API int svObjectModules_getResult(svObjData_t* output, int max_output, bool wait) {
-        std::unique_lock<std::mutex> lock(queueMutex);
-        if (wait) {
-            // 等待直到有結果可用
-            if (outputQueue.empty())
-                // AILOG_INFO("Waiting for output queue to have results.");
-                outputQueueCondition.wait(lock, [] { return !outputQueue.empty() || stopThread; });
+    YOLOV11_API int svObjectModules_getResult(const char* function, int camera_id, svObjData_t* output, int max_output, bool wait) {
+        int count = 0;
+        if (std::string(function) == "yolo_color") {
+            if (YoloWithColor::stopThread || camera_id > YoloWithColor::outputQueues.size()) return -1;
+            if (YoloWithColor::outputQueues[camera_id].empty()) {
+                if (wait) { // 等待直到有結果可用
+                    std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
+                    YoloWithColor::outputQueueConditions[camera_id]->wait(lock, [&] { return !YoloWithColor::outputQueues[camera_id].empty() || YoloWithColor::stopThread; });
+                }
+                else {
+                    return -1; // 如果不等待且沒有結果，則返回 -1
+                }
+            }
+            else {
+                std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
+            }
+            OutputData result = YoloWithColor::outputQueues[camera_id].front();
+            YoloWithColor::outputQueues[camera_id].pop();
+            // 複製結果到輸出
+            count = std::min(result.count, max_output);
+            memcpy(output, result.output, count * sizeof(svObjData_t));
         }
-        if (stopThread || outputQueue.empty()) return -1;
-        // 從 outputQueue 中取出結果
-        OutputData result = outputQueue.front();
-        outputQueue.pop();
-
-        // 複製結果到輸出
-        int count = std::min(result.count, max_output);
-        memcpy(output, result.output, count * sizeof(svObjData_t));
-
         return count; // 返回檢測到的物件數量
     }
 
+    YOLOV11_API void svCreate_ROI(int roi_id, int width, int height, float* points_x, float* points_y, int point_count) {
+        if (roi_map.find(roi_id) != roi_map.end()) {
+            AILOG_WARN("ROI with id " + std::to_string(roi_id) + " already exists, updating.");
+        }
+        // 轉換 C 數組為 C++ vector
+        std::vector<cv::Point2f> points;
+        for (int i = 0; i < point_count; ++i) {
+            points.emplace_back(points_x[i], points_y[i]);
+        }
+        cv::Mat mask = createROI(width, height, points);
+        roi_map[roi_id] = {mask, points, width, height};
+    }
+
+    YOLOV11_API void svRemove_ROI(int roi_id) {
+        auto it = roi_map.find(roi_id);
+        if (it != roi_map.end()) {
+            roi_map.erase(it);
+            AILOG_INFO("Removed ROI with id " + std::to_string(roi_id));
+        } else {
+            AILOG_WARN("ROI with id " + std::to_string(roi_id) + " does not exist.");
+        }
+    }
+
     YOLOV11_API void release() {
-        stopThread = true;
-        inputQueueCondition.notify_all(); // 通知執行緒停止等待
-        outputQueueCondition.notify_all(); // 通知執行緒停止等待
-        if (inferenceThread.joinable()) {
-            inferenceThread.join();
+        YoloWithColor::stopThread = true;
+        YoloWithColor::inputQueueCondition.notify_all(); // 通知執行緒停止等待
+
+        // 通知所有output condition variables
+        for (auto& cv : YoloWithColor::outputQueueConditions) {
+            cv->notify_all();
+        }
+
+        if (YoloWithColor::inferenceThread.joinable()) {
+            YoloWithColor::inferenceThread.join();
         }
         AILOG_INFO("Inference thread stopped.");
-        model.reset();
+        YoloWithColor::model.reset();
     }
 }

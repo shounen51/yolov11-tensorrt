@@ -50,7 +50,11 @@ int main(int argc, char** argv) {
     }
 
     // API 1: Initialize the model
-    svCreate_ObjectModules(engine_path, 0.3f, log_file); // log_file can be empty
+    svCreate_ObjectModules("yolo_color", 10, engine_path, 0.3f, log_file); // 初始化功能名稱, 攝影機數量, 權重, 閾值, log
+    // API 2: create a ROI
+    float points_x[] = {0.5f, 1.0f, 1.0f, 0.5f}; //右半邊畫面
+    float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f}; //右半邊畫面
+    svCreate_ROI(0, width, height, points_x, points_y, 4); // create a ROI with id 0, width, height, points_x, points_y, point_count
     // load yuv image as a uint8_t array
     std::ifstream file(yuv_path, std::ios::binary);
     file.seekg(0, std::ios::end);
@@ -65,14 +69,14 @@ int main(int argc, char** argv) {
     int num = 0;
     int num_tests = 10;
     for (int i = 0; i < num_tests; ++i) {
-        // API 2: Process yuv image
-        int ok = svObjectModules_inputImageYUV(frame, width, height, 3, MAX_OBJECTS);
+        // API 3: Process yuv image
+        int ok = svObjectModules_inputImageYUV("yolo_color", 9, 0, frame, width, height, 3, MAX_OBJECTS);
         if (ok == 0) {
             cerr << "Failed to process image." << endl;
             return -1;
         }
-        // API 3: Get results
-        num = svObjectModules_getResult(results, MAX_OBJECTS, true);
+        // API 4: Get results
+        num = svObjectModules_getResult("yolo_color", 9, results, MAX_OBJECTS, true);
         if (num == -1) {
             cerr << "Thread have been stoped." << endl;
             break;
@@ -92,13 +96,14 @@ int main(int argc, char** argv) {
                 << ", BBox: [" << r.bbox_xmin << "," << r.bbox_ymin
                 << "," << r.bbox_xmax << "," << r.bbox_ymax << "]"
                 << ", Color_first: " << std::string(r.color_label_first)
-                << ", Color_second: " << std::string(r.color_label_second) << "\n";
+                << ", Color_second: " << std::string(r.color_label_second)
+                << ", In_ROI_ID: " << std::to_string(r.in_roi_id) << "\n";
         if (img.empty()) continue; // skip drawing if no jpg image is found
         // Draw bounding box and label on the image
         rectangle(img, Rect(Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows),
                                     Point(r.bbox_xmax*img.cols, r.bbox_ymax*img.rows)),
                     Scalar(0, 255, 0), 2);
-        putText(img, std::string(r.color_label_first), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
+        putText(img, std::to_string(r.in_roi_id), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
     }
     if (!img.empty()) {
