@@ -87,6 +87,9 @@ int main(int argc, char** argv) {
     double duration = chrono::duration_cast<chrono::milliseconds>(t2 - t1).count();
     cout << "Inference time: " << duration/num_tests << " ms" << endl;
 
+    // API 5: Remove ROI
+    svRemove_ROI(0);
+
     cout << "Detected " << num << " objects.\n";
     for (int i = 0; i < num; ++i) {
         auto& r = results[i];
