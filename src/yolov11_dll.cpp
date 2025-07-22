@@ -98,6 +98,10 @@ extern "C" {
     }
 
     YOLOV11_API void svCreate_ROI(int roi_id, int width, int height, float* points_x, float* points_y, int point_count) {
+        if (roi_id == -1) {
+            AILOG_ERROR("ROI ID cannot be -1, please provide a valid ROI ID.");
+            return;
+        }
         if (roi_map.find(roi_id) != roi_map.end()) {
             AILOG_WARN("ROI with id " + std::to_string(roi_id) + " already exists, updating.");
         }
