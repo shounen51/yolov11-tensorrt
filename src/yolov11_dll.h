@@ -31,10 +31,10 @@ typedef struct svResultProjectObject_DataType
     float bbox_ymax;
     float confidence;
     int class_id;
-    char color_label_first[256];
-    char color_label_second[256];
-    int in_roi_id; // -1 means not in any ROI
-    char pose[256]; // [stand, sit, fall]，如果沒有進行偵測則為 "None"
+    int in_roi_id;
+    char color_label_first[16];
+    char color_label_second[16];
+    char pose[16];
 } svObjData_t;
 
 // C 兼容的初始化函數
