@@ -1,6 +1,7 @@
 #pragma once
 #include <memory>
 #include <unordered_map>
+#include <bitset>
 #include <opencv2/opencv.hpp>
 #ifdef YOLOV11_EXPORTS
 #define YOLOV11_API __declspec(dllexport)
@@ -13,7 +14,7 @@ struct ROI {
     std::vector<cv::Point2f> points;
     int width;
     int height;
-    std::array<int, 5> alarm = {0, 0, 0, 0, 0};
+    std::bitset<5> alarm;  // 5位的位元集合，用於警報狀態
 };
 
 extern std::unordered_map<int, ROI> roi_map;
@@ -70,11 +71,15 @@ typedef struct OutputData {
     int count;
 };
 
+enum functions {
+    YOLO_COLOR = 0,
+    FALL = 1
+};
 
 /**
  * 初始化模型
  */
-YOLOV11_API void svCreate_ObjectModules(const char* function, int camera_amount, const char* engine_path, float conf_threshold, const char* logFilePath = "");
+YOLOV11_API void svCreate_ObjectModules(int function, int camera_amount, const char* engine_path1, const char* engine_path2, float conf_threshold, const char* logFilePath = "");
 
 /**
  * 處理影像並輸出結果
@@ -89,9 +94,9 @@ YOLOV11_API void svCreate_ObjectModules(const char* function, int camera_amount,
  * @param max_output   最大可寫入數量
  * @return             實際填入的數量
  */
-YOLOV11_API int svObjectModules_inputImageYUV(const char* function, int camera_id, int roi_id, unsigned char* image_data, int width, int height, int channels, int max_output);
+YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id, int roi_id, unsigned char* image_data, int width, int height, int channels, int max_output);
 // 如果 wait 為 false 且 outputQueue 為空，則直接返回 -1
-YOLOV11_API int svObjectModules_getResult(const char* function, int camera_id, svObjData_t* output, int max_output, bool wait=true);
+YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait=true);
 
 YOLOV11_API void svCreate_ROI(int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 YOLOV11_API void svRemove_ROI(int roi_id);

@@ -5,6 +5,7 @@
 #include "YUV420ToRGB.h"
 #include "Logger.h"
 #include "detection_color_thread.h"
+#include "fall_thread.h"
 #include <cuda_utils.h>
 #include <memory>
 #include <opencv2/opencv.hpp>
@@ -29,7 +30,7 @@ cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
 }
 
 extern "C" {
-    YOLOV11_API void svCreate_ObjectModules(const char* function, int camera_amount, const char* engine_path, float conf_threshold, const char* logFilePath) {
+    YOLOV11_API void svCreate_ObjectModules(int function, int camera_amount, const char* engine_path1, const char* engine_path2, float conf_threshold, const char* logFilePath) {
         AILogger::init(std::string(logFilePath));
         if (std::string(logFilePath) == "") {
             AILOG_INFO("No log file path specified, using default console logging.");
@@ -38,13 +39,17 @@ extern "C" {
         else {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
-        if (std::string(function) == "yolo_color") {
-            AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path));
-            YoloWithColor::createModelAndStartThread(engine_path, camera_amount, conf_threshold, logFilePath);
+        if (function == functions::YOLO_COLOR) {
+            AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path1));
+            YoloWithColor::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+        }
+        else if (function == functions::FALL) {
+            AILOG_INFO("Initializing Fall Detection model with engine: " + std::string(engine_path1) + " and " + std::string(engine_path2));
+            fall::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
         }
     }
 
-    YOLOV11_API int svObjectModules_inputImageYUV(const char* function, int camera_id, int roi_id,
+    YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id, int roi_id,
         unsigned char* image_data, int width, int height, int channels, int max_output) {
 
         if (roi_map.find(roi_id) != roi_map.end()) {
@@ -61,7 +66,7 @@ extern "C" {
         }else {
             AILOG_WARN("ROI with id " + std::to_string(roi_id) + " does not exist, ignoring.");
         }
-        if (std::string(function) == "yolo_color") {
+        if (function == functions::YOLO_COLOR) {
             if (YoloWithColor::stopThread || camera_id >= YoloWithColor::outputQueues.size()) return -1;
             std::lock_guard<std::mutex> lock(YoloWithColor::inputQueueMutex);
             YoloWithColor::inputQueue.push({camera_id, roi_id, image_data, width, height, channels, max_output});
@@ -69,12 +74,24 @@ extern "C" {
             if (YoloWithColor::inputQueue.size() > 100)
                 AILOG_WARN("Input queue size exceeds 100, input too fast.");
         }
+        else if (function == functions::FALL) {
+            if (fall::stopThread || camera_id >= fall::outputQueues.size()) return -1;
+            std::lock_guard<std::mutex> lock(fall::inputQueueMutex);
+            fall::inputQueue.push({camera_id, roi_id, image_data, width, height, channels, max_output});
+            fall::inputQueueCondition.notify_one();
+            if (fall::inputQueue.size() > 100)
+                AILOG_WARN("Input queue size exceeds 100, input too fast.");
+        }
+        else {
+            AILOG_ERROR("Unknown function type: " + std::to_string(function));
+            return -1;
+        }
         return 1;
     }
 
-    YOLOV11_API int svObjectModules_getResult(const char* function, int camera_id, svObjData_t* output, int max_output, bool wait) {
+    YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait) {
         int count = 0;
-        if (std::string(function) == "yolo_color") {
+        if (function == functions::YOLO_COLOR) {
             if (YoloWithColor::stopThread || camera_id > YoloWithColor::outputQueues.size()) return -1;
             if (YoloWithColor::outputQueues[camera_id].empty()) {
                 if (wait) { // 等待直到有結果可用
@@ -93,6 +110,29 @@ extern "C" {
             // 複製結果到輸出
             count = std::min(result.count, max_output);
             memcpy(output, result.output, count * sizeof(svObjData_t));
+        }
+        else if (function == functions::FALL) {
+            if (fall::stopThread || camera_id > fall::outputQueues.size()) return -1;
+            if (fall::outputQueues[camera_id].empty()) {
+                if (wait) { // 等待直到有結果可用
+                    std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
+                    fall::outputQueueConditions[camera_id]->wait(lock, [&] { return !fall::outputQueues[camera_id].empty() || fall::stopThread; });
+                }
+                else {
+                    return -1; // 如果不等待且沒有結果，則返回 -1
+                }
+            }
+            else {
+                std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
+            }
+            OutputData result = fall::outputQueues[camera_id].front();
+            fall::outputQueues[camera_id].pop();
+            // 複製結果到輸出
+            count = std::min(result.count, max_output);
+            memcpy(output, result.output, count * sizeof(svObjData_t));
+        } else {
+            AILOG_ERROR("Unknown function type: " + std::to_string(function));
+            return -1;
         }
         return count; // 返回檢測到的物件數量
     }

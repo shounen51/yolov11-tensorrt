@@ -17,6 +17,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/ColorClassifier)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/YUV420ToRGB)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/fall)
 
 # Set TensorRT path
 set(TENSORRT_DIR "C:/Program Files (x86)/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8")
@@ -33,6 +34,7 @@ set(COMMON_SOURCES
     src/detection_color_thread.cpp
     src/ColorClassifier/ColorClassifier.cpp
     src/YUV420ToRGB/YUV420ToRGB.cu
+    src/fall/fall_thread.cpp
 )
 set(COMMON_HEADERS
     src/yolov11.h
@@ -45,6 +47,7 @@ set(COMMON_HEADERS
     src/detection_color_thread.h
     src/ColorClassifier/ColorClassifier.h
     src/YUV420ToRGB/YUV420ToRGB.h
+    src/fall/fall_thread.h
 )
 
 # === DLL target ===

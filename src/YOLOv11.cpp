@@ -108,7 +108,7 @@ YOLOv11::~YOLOv11()
 }
 
 uint8_t* YOLOv11::getGpuRgbBuffer(int width, int height) {
-    int img_size = width * height * 3 * sizeof(uint8_t); // YUV420 size
+    int img_size = width * height * 3 * sizeof(uint8_t);
     if (img_size > gpu_rgb_buffer_size) {
         AILOG_INFO("RGB buffer size changed from " + std::to_string(gpu_rgb_buffer_size) + " to " + std::to_string(img_size));
         if (gpu_rgb_buffer) {
