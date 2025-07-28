@@ -15,13 +15,14 @@ int main(int argc, char** argv) {
         return -1;
     }
     // Parse command line arguments
-    const char* detection_engine_path = argv[1];
+    const char* engine_path1 = argv[1];
     const char* engine_path2 = argv[2];
     const char* yuv_path = argv[3];
     int width = std::stoi(argv[4]);
     int height = std::stoi(argv[5]);
     const char* log_file = "";
     if (argc >= 7) log_file = argv[6];
+    int test_function = functions::CLIMB;
     cout << "Engine path 1: " << engine_path1 << endl;
     cout << "Engine path 2: " << engine_path2 << endl;
     cout << "Yuv path: " << yuv_path << endl;
@@ -54,9 +55,9 @@ int main(int argc, char** argv) {
     // API 1: Initialize the model
     svCreate_ObjectModules(test_function, 10, engine_path1, engine_path2, 0.3f, log_file); // 初始化功能名稱, 攝影機數量, 權重, 閾值, log
     // API 2: create a ROI
-    float points_x[] = {0.5f, 1.0f, 1.0f, 0.5f}; //右半邊畫面
-    float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f}; //右半邊畫面
-    svCreate_ROI(9, test_function, 0, width, height, points_x, points_y, 4);
+    float wall_points_x[] = {0.46875f, 0.390625f}; //牆面點座標
+    float wall_points_y[] = {0.22222f, 0.583333f}; //牆面點座標
+    svCreate_wall(9, test_function, 0, width, height, wall_points_x, wall_points_y, 2);
 
     // load yuv image as a uint8_t array
     std::ifstream file(yuv_path, std::ios::binary);
@@ -104,13 +105,13 @@ int main(int argc, char** argv) {
                 << ", Color_first: " << std::string(r.color_label_first)
                 << ", Color_second: " << std::string(r.color_label_second)
                 << ", In_ROI_ID: " << std::to_string(r.in_roi_id)
-                << ", pose: " << std::string(r.pose) << "\n";
+                << ", climb: " << std::string(r.climb) << "\n";
         if (img.empty()) continue; // skip drawing if no jpg image is found
         // Draw bounding box and label on the image
         rectangle(img, Rect(Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows),
                                     Point(r.bbox_xmax*img.cols, r.bbox_ymax*img.rows)),
                     Scalar(0, 255, 0), 2);
-        putText(img, std::string(r.pose), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
+        putText(img, std::string(r.climb), Point(r.bbox_xmin*img.cols, r.bbox_ymin*img.rows - 10),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
     }
     if (!img.empty()) {

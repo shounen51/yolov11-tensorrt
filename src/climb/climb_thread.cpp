@@ -255,6 +255,33 @@ namespace climb {
                 float HipX = static_cast<float>((skeletons[index].LeftHip.x + skeletons[index].RightHip.x) / 2 - pad_x) / r;
                 float HipY = static_cast<float>((skeletons[index].LeftHip.y + skeletons[index].RightHip.y) / 2 - pad_y) / r;
 
+                // 正規化成 [0~1]
+                float norm_x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
+                float norm_y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
+                float norm_x2 = std::clamp(x2 / input.width, 0.0f, 1.0f);
+                float norm_y2 = std::clamp(y2 / input.height, 0.0f, 1.0f);
+                float norm_ShoulderX = std::clamp(ShoulderX / input.width, 0.0f, 1.0f);
+                float norm_ShoulderY = std::clamp(ShoulderY / input.height, 0.0f, 1.0f);
+                float norm_HipX = std::clamp(HipX / input.width, 0.0f, 1.0f);
+                float norm_HipY = std::clamp(HipY / input.height, 0.0f, 1.0f);
+
+                // 將結果放入 output
+                output[i].bbox_xmin = norm_x1;
+                output[i].bbox_ymin = norm_y1;
+                output[i].bbox_xmax = norm_x2;
+                output[i].bbox_ymax = norm_y2;
+                output[i].class_id = 0;
+                output[i].confidence = confidences[index];
+
+                // 計算 Shoulder 和 Hip 是否位於 bbox 內
+                if (ShoulderX < x1 || ShoulderX > x2 ||
+                    ShoulderY < y1 || ShoulderY > y2 ||
+                    HipX < x1 || HipX > x2 ||
+                    HipY < y1 || HipY > y2) {
+                    AILOG_DEBUG("Shoulder or Hip is outside the bounding box, skipping climb detection");
+                    continue; // 如果 Shoulder 或 Hip 不在 bbox 內，則跳過爬牆偵測
+                }
+
                 // 計算Shoulder到Hip的向量
                 float vectorX = HipX - ShoulderX;
                 float vectorY = HipY - ShoulderY;
@@ -284,24 +311,6 @@ namespace climb {
                     HipY = extendedHipY;
                 }
 
-                // 正規化成 [0~1]
-                float norm_x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
-                float norm_y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
-                float norm_x2 = std::clamp(x2 / input.width, 0.0f, 1.0f);
-                float norm_y2 = std::clamp(y2 / input.height, 0.0f, 1.0f);
-                float norm_ShoulderX = std::clamp(ShoulderX / input.width, 0.0f, 1.0f);
-                float norm_ShoulderY = std::clamp(ShoulderY / input.height, 0.0f, 1.0f);
-                float norm_HipX = std::clamp(HipX / input.width, 0.0f, 1.0f);
-                float norm_HipY = std::clamp(HipY / input.height, 0.0f, 1.0f);
-
-                // 將結果放入 output
-                output[i].bbox_xmin = norm_x1;
-                output[i].bbox_ymin = norm_y1;
-                output[i].bbox_xmax = norm_x2;
-                output[i].bbox_ymax = norm_y2;
-                output[i].class_id = 0;
-                output[i].confidence = confidences[index];
-
                 // 計算Shoulder-Hip線段相對於垂直方向的傾斜角度
                 float dx = norm_HipX - norm_ShoulderX;  // x方向的差值
                 float dy = norm_HipY - norm_ShoulderY;  // y方向的差值
@@ -313,47 +322,45 @@ namespace climb {
 
                 AILOG_DEBUG("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical");
 
+
                 // 只有當傾斜角度大於等於30度時才進行ROI相交判斷
-                if (angle_deg >= 30.0f) {
-                    AILOG_DEBUG("Angle threshold met (" + std::to_string(angle_deg) + " degrees), proceeding with ROI intersection check");
+                if (angle_deg < 30.0f) {
+                    continue; // 如果角度小於30度，則不進行爬牆偵測
+                }
+                for (auto& roi_pair : roi_map) {
+                    ROI* roi_ptr = &roi_pair.second;
+                    bool in_roi = false;
 
-                    for (auto& roi_pair : roi_map) {
-                        ROI* roi_ptr = &roi_pair.second;
-                        bool in_roi = false;
+                    // 使用Shoulder-Hip線段與ROI邊界進行相交判斷
+                    cv::Point2f shoulder_point(norm_ShoulderX, norm_ShoulderY);
+                    cv::Point2f hip_point(norm_HipX, norm_HipY);
 
-                        // 使用Shoulder-Hip線段與ROI邊界進行相交判斷
-                        cv::Point2f shoulder_point(norm_ShoulderX, norm_ShoulderY);
-                        cv::Point2f hip_point(norm_HipX, norm_HipY);
+                    // 檢查Shoulder-Hip線段是否與ROI的任意邊界線段相交
+                    const std::vector<cv::Point2f>& points = roi_ptr->points;
+                    if (points.size() >= 2) {
+                        for (size_t j = 0; j < points.size(); ++j) {
+                            // 獲取相鄰的兩個點形成ROI邊界線段
+                            cv::Point2f roi_point1 = points[j];
+                            cv::Point2f roi_point2 = points[(j + 1) % points.size()]; // 環形連接，最後一個點連接第一個點
 
-                        // 檢查Shoulder-Hip線段是否與ROI的任意邊界線段相交
-                        const std::vector<cv::Point2f>& points = roi_ptr->points;
-                        if (points.size() >= 2) {
-                            for (size_t j = 0; j < points.size(); ++j) {
-                                // 獲取相鄰的兩個點形成ROI邊界線段
-                                cv::Point2f roi_point1 = points[j];
-                                cv::Point2f roi_point2 = points[(j + 1) % points.size()]; // 環形連接，最後一個點連接第一個點
-
-                                // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
-                                if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
-                                    in_roi = true;
-                                    AILOG_DEBUG("Climb detected: Shoulder-Hip line intersects with ROI " +
-                                            std::to_string(roi_pair.first) + " edge from (" +
-                                            std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
-                                            std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
-                                    break; // 找到相交就跳出循環
-                                }
+                            // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
+                            if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
+                                in_roi = true;
+                                AILOG_DEBUG("Climb detected: Shoulder-Hip line intersects with ROI " +
+                                        std::to_string(roi_pair.first) + " edge from (" +
+                                        std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
+                                        std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
+                                break; // 找到相交就跳出循環
                             }
                         }
-                        if (in_roi){
-                            output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
-                            strncpy(output[i].climb, "climb", sizeof(output[i].climb) - 1); // 設定姿勢為 "climb"
-                            output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字符串結尾
-                            AILOG_INFO("Climb behavior detected in ROI " + std::to_string(roi_pair.first));
-                            break; // 找到一個相交的ROI就足夠了
-                        }
                     }
-                } else {
-                    AILOG_DEBUG("Angle too small (" + std::to_string(angle_deg) + " degrees), skipping ROI intersection check");
+                    if (in_roi){
+                        output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
+                        strncpy(output[i].climb, "climb", sizeof(output[i].climb) - 1); // 設定姿勢為 "climb"
+                        output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字符串結尾
+                        AILOG_INFO("Climb behavior detected in ROI " + std::to_string(roi_pair.first));
+                        break; // 找到一個相交的ROI就足夠了
+                    }
                 }
             }
 
