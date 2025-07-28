@@ -194,7 +194,7 @@ extern "C" {
         camera_function_roi_map[camera_id][function_id][roi_id] = {mask, points, width, height};
     }
 
-    YOLOV11_API void svRemove_ROI(int camera_id, int function_id, int roi_id) {
+    YOLOV11_API void svRemove_ROIandWall(int camera_id, int function_id, int roi_id) {
         auto it = camera_function_roi_map.find(camera_id);
         if (it != camera_function_roi_map.end()) {
             auto it2 = it->second.find(function_id);
