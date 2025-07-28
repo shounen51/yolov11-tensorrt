@@ -16,11 +16,10 @@ struct ROI {
     int height;
     std::bitset<5> alarm;  // 5位的位元集合，用於警報狀態
 };
-
-extern std::unordered_map<int, ROI> roi_map;
+extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, ROI>>> camera_function_roi_map;
 
 // points is 0~1
-cv::Mat createROI(int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+cv::Mat createROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 
 extern "C" {
 
@@ -36,6 +35,7 @@ typedef struct svResultProjectObject_DataType
     char color_label_first[16];
     char color_label_second[16];
     char pose[16];
+    char climb[16];
 } svObjData_t;
 
 // C 兼容的初始化函數
@@ -53,11 +53,12 @@ inline void svObjData_init(svObjData_t* obj) {
     obj->color_label_second[sizeof(obj->color_label_second) - 1] = '\0';
     strncpy(obj->pose, "none", sizeof(obj->pose));
     obj->pose[sizeof(obj->pose) - 1] = '\0';
+    strncpy(obj->climb, "none", sizeof(obj->climb));
+    obj->climb[sizeof(obj->climb) - 1] = '\0';
 }
 
 typedef struct InputData {
     int camera_id;
-    int roi_id; // -1 means no ROI
     // 注意：image_data 是指向 YUV420 格式的影像資料
     unsigned char* image_data;
     int width;
@@ -73,7 +74,8 @@ typedef struct OutputData {
 
 enum functions {
     YOLO_COLOR = 0,
-    FALL = 1
+    FALL = 1,
+    CLIMB = 2
 };
 
 /**
@@ -94,12 +96,13 @@ YOLOV11_API void svCreate_ObjectModules(int function, int camera_amount, const c
  * @param max_output   最大可寫入數量
  * @return             實際填入的數量
  */
-YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id, int roi_id, unsigned char* image_data, int width, int height, int channels, int max_output);
+YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id, unsigned char* image_data, int width, int height, int channels, int max_output);
 // 如果 wait 為 false 且 outputQueue 為空，則直接返回 -1
 YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait=true);
 
-YOLOV11_API void svCreate_ROI(int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
-YOLOV11_API void svRemove_ROI(int roi_id);
+YOLOV11_API void svCreate_ROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+YOLOV11_API void svCreate_wall(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+YOLOV11_API void svRemove_ROI(int camera_id, int function_id, int roi_id);
 /**
  * 清理資源
  */

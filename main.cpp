@@ -15,14 +15,13 @@ int main(int argc, char** argv) {
         return -1;
     }
     // Parse command line arguments
-    const char* engine_path1 = argv[1];
+    const char* detection_engine_path = argv[1];
     const char* engine_path2 = argv[2];
     const char* yuv_path = argv[3];
     int width = std::stoi(argv[4]);
     int height = std::stoi(argv[5]);
     const char* log_file = "";
     if (argc >= 7) log_file = argv[6];
-    int test_function = functions::FALL;
     cout << "Engine path 1: " << engine_path1 << endl;
     cout << "Engine path 2: " << engine_path2 << endl;
     cout << "Yuv path: " << yuv_path << endl;
@@ -57,7 +56,7 @@ int main(int argc, char** argv) {
     // API 2: create a ROI
     float points_x[] = {0.5f, 1.0f, 1.0f, 0.5f}; //右半邊畫面
     float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f}; //右半邊畫面
-    svCreate_ROI(0, width, height, points_x, points_y, 4); // create a ROI with id 0, width, height, points_x, points_y, point_count
+    svCreate_ROI(9, test_function, 0, width, height, points_x, points_y, 4);
 
     // load yuv image as a uint8_t array
     std::ifstream file(yuv_path, std::ios::binary);
@@ -74,7 +73,7 @@ int main(int argc, char** argv) {
     int num_tests = 5;
     for (int i = 0; i < num_tests; ++i) {
         // API 3: Process yuv image
-        int ok = svObjectModules_inputImageYUV(test_function, 9, 0, frame, width, height, 3, MAX_OBJECTS);
+        int ok = svObjectModules_inputImageYUV(test_function, 9, frame, width, height, 3, MAX_OBJECTS);
         if (ok == 0) {
             cerr << "Failed to process image." << endl;
             return -1;
@@ -92,7 +91,7 @@ int main(int argc, char** argv) {
     cout << "Inference time: " << duration/num_tests << " ms" << endl;
 
     // API 5: Remove ROI
-    svRemove_ROI(0);
+    svRemove_ROI(9, test_function, 0);
 
     cout << "Detected " << num << " objects.\n";
     for (int i = 0; i < num; ++i) {

@@ -164,11 +164,19 @@ namespace fall {
                 svObjData_init(&output[i]);
             }
 
-            // 取得 roi 引用
-            ROI* roi_ptr = nullptr;
-            if (input.roi_id != -1 && roi_map.find(input.roi_id) != roi_map.end()) {
-                roi_ptr = &roi_map[input.roi_id];  // 取得指針，指向原始數據
-                roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
+            // 取得 roi - 直接操作原始數據而不是副本
+            std::unordered_map<int, ROI>* roi_map_ptr = nullptr;
+            if (camera_function_roi_map.find(input.camera_id) != camera_function_roi_map.end()) {
+                if (camera_function_roi_map[input.camera_id].find(functions::FALL) != camera_function_roi_map[input.camera_id].end())
+                    roi_map_ptr = &camera_function_roi_map[input.camera_id][functions::FALL];
+            }
+
+            // 更新alarm狀態 - 直接操作原始數據
+            if (roi_map_ptr != nullptr) {
+                for (auto& roi_pair : *roi_map_ptr) {
+                    ROI* roi_ptr = &roi_pair.second; // 指向原始數據
+                    roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
+                }
             }
 
             for (int i = 0; i < count; ++i) {
@@ -194,46 +202,53 @@ namespace fall {
                 output[i].class_id = det.class_id;
                 output[i].confidence = det.conf;
                 // 檢查是否在 ROI 內
-                if (input.roi_id != -1 && det.class_id == model->person_class_id && roi_ptr != nullptr) {
-                    cv::Point bottom_middle = cv::Point(int((x1+x2)/2), int(y2));
-                    output[i].in_roi_id = (roi_ptr->mask.at<uchar>(bottom_middle) != 0) ? input.roi_id : -1; // 設定 ROI ID
-                    if (output[i].in_roi_id != -1) {
-                        // 如果在 ROI 內，做跌倒辨識
-                        cv::Mat personCrop = rgb_image(Rect(Point(x1, y1),
-                                                            Point(x2, y2)));
-                        cv::resize(personCrop, personCrop, cv::Size(224, 224));
-                        personCrop.convertTo(personCrop, CV_32FC3, 1.0 / 255); // 歸一化到0~1
-                        std::vector<cv::Mat> channels(3);
-                        cv::split(personCrop, channels);
-                        for (int c = 0; c < 3; ++c) {
-                            memcpy(fallInput + c * 224 * 224, channels[c].data, 224 * 224 * sizeof(float));
-                        }
-                        cudaMemcpy(fallBuffers[0], fallInput, sizeof(fallInput), cudaMemcpyHostToDevice);
-                        context->executeV2(fallBuffers);
-                        cudaMemcpy(fallOutput, fallBuffers[1], sizeof(fallOutput), cudaMemcpyDeviceToHost);
-                        // 取 fallOutput 最大值作為跌倒判斷
-                        float max_conf = fallOutput[0];
-                        int max_index = 0;
-                        for (int j = 1; j < 4; ++j) {
-                            if (fallOutput[j] > max_conf) {
-                                max_conf = fallOutput[j];
-                                max_index = j;
+                if (roi_map_ptr == nullptr || roi_map_ptr->size() == 0) {
+                    continue; // 如果沒有 ROI，則跳過
+                }
+                for (auto& roi_pair : *roi_map_ptr) {
+                    ROI* roi_ptr = &roi_pair.second; // 指向原始數據
+                    if (det.class_id == model->person_class_id) {
+                        cv::Point bottom_middle = cv::Point(int((x1 + x2) / 2), int(y2));
+                        if (roi_ptr->mask.at<uchar>(bottom_middle) != 0) {
+                            output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
+                            // 如果在 ROI 內，做跌倒辨識
+                            cv::Mat personCrop = rgb_image(Rect(Point(x1, y1),
+                                                                Point(x2, y2)));
+                            cv::resize(personCrop, personCrop, cv::Size(224, 224));
+                            personCrop.convertTo(personCrop, CV_32FC3, 1.0 / 255); // 歸一化到0~1
+                            std::vector<cv::Mat> channels(3);
+                            cv::split(personCrop, channels);
+                            for (int c = 0; c < 3; ++c) {
+                                memcpy(fallInput + c * 224 * 224, channels[c].data, 224 * 224 * sizeof(float));
                             }
-                        }
-                        std::string fall_label = fall_classname[max_index];
-                        if (max_index <= fall_index){
-                            roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
-                            if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
-                                // 如果連續三個 frame 都有跌倒，則觸發警報
-                                AILOG_WARN("Fall detected in ROI " + std::to_string(input.roi_id) + " for camera " + std::to_string(input.camera_id));
-                                fall_label = "fall"; // 強制標記為跌倒
-                            }else {
-                                fall_label = "falling"; // 跌倒投票中
+                            cudaMemcpy(fallBuffers[0], fallInput, sizeof(fallInput), cudaMemcpyHostToDevice);
+                            context->executeV2(fallBuffers);
+                            cudaMemcpy(fallOutput, fallBuffers[1], sizeof(fallOutput), cudaMemcpyDeviceToHost);
+                            // 取 fallOutput 最大值作為跌倒判斷
+                            float max_conf = fallOutput[0];
+                            int max_index = 0;
+                            for (int j = 1; j < 4; ++j) {
+                                if (fallOutput[j] > max_conf) {
+                                    max_conf = fallOutput[j];
+                                    max_index = j;
+                                }
                             }
+                            std::string fall_label = fall_classname[max_index];
+                            if (max_index <= fall_index) {
+                                roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
+                                if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
+                                    // 如果連續三個 frame 都有跌倒，則觸發警報
+                                    AILOG_WARN("Fall detected in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
+                                    fall_label = "fall"; // 強制標記為跌倒
+                                }else {
+                                    fall_label = "falling"; // 跌倒投票中
+                                }
+                            }
+                            // 將跌倒類別寫入 output
+                            strncpy(output[i].pose, fall_label.c_str(), sizeof(output[i].pose) - 1);
+                            output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
+                            break; // 只偵測遇到的第一個 ROI
                         }
-                        // 將跌倒類別寫入 output
-                        strncpy(output[i].pose, fall_label.c_str(), sizeof(output[i].pose) - 1);
-                        output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
                     }
                 }
             }

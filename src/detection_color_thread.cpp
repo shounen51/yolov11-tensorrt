@@ -126,9 +126,10 @@ namespace YoloWithColor {
             }
 
             // 取得 roi
-            ROI roi;
-            if (input.roi_id != -1 && roi_map.find(input.roi_id) != roi_map.end()) {
-                roi = roi_map[input.roi_id];
+            std::unordered_map<int, ROI> roi_map;
+            if (camera_function_roi_map.find(input.camera_id) != camera_function_roi_map.end()) {
+                if (camera_function_roi_map[input.camera_id].find(functions::YOLO_COLOR) != camera_function_roi_map[input.camera_id].end())
+                    roi_map = camera_function_roi_map[input.camera_id][functions::YOLO_COLOR];
             }
 
             for (int i = 0; i < count; ++i) {
@@ -182,9 +183,12 @@ namespace YoloWithColor {
                 output[i].color_label_first[sizeof(output[i].color_label_first) - 1] = '\0'; // 確保以空字元結尾
                 output[i].color_label_second[sizeof(output[i].color_label_second) - 1] = '\0'; // 確保以空字元結尾
                 // 檢查是否在 ROI 內
-                if (input.roi_id != -1) {
+                output[i].in_roi_id = -1; // 預設不在 ROI 內
+                for (auto& roi_pair : roi_map) {
                     cv::Point bottom_middle = (cv::Point(x1 * input.width, y2 * input.height) + cv::Point(x2 * input.width, y2 * input.height)) / 2;
-                    output[i].in_roi_id = (roi.mask.at<uchar>(bottom_middle) != 0) ? input.roi_id : -1; // 設定 ROI ID
+                    if (roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
+                        output[i].in_roi_id = roi_pair.first;
+                    }
                 }
             }
 
