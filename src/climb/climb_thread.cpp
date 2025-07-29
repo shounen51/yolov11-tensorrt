@@ -391,6 +391,8 @@ namespace climb {
                 outputQueues[camera_id].push({output, count});
             }
             outputQueueConditions[camera_id]->notify_one(); // 通知等待的執行緒有新結果可用
+            AILOG_DEBUG("Climb detection completed for camera " + std::to_string(input.camera_id) + ", output count: " + std::to_string(count));
+
         }
     }
 }

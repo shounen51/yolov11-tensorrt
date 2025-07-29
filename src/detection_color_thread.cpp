@@ -132,9 +132,14 @@ namespace YoloWithColor {
 
             // 取得 roi
             std::unordered_map<int, ROI> roi_map;
+            std::unordered_map<int, int> roi_people_count;
             if (camera_function_roi_map.find(input.camera_id) != camera_function_roi_map.end()) {
                 if (camera_function_roi_map[input.camera_id].find(functions::YOLO_COLOR) != camera_function_roi_map[input.camera_id].end())
                     roi_map = camera_function_roi_map[input.camera_id][functions::YOLO_COLOR];
+            }
+            // 初始化 roi_people_count
+            for (const auto& roi_pair : roi_map) {
+                roi_people_count[roi_pair.first] = 0; // 初始化每個 ROI 的人數計數為 0
             }
 
             for (int i = 0; i < count; ++i) {
@@ -191,21 +196,25 @@ namespace YoloWithColor {
                     cv::Point bottom_middle = (cv::Point(x1 * input.width, y2 * input.height) + cv::Point(x2 * input.width, y2 * input.height)) / 2;
                     if (roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
                         output[i].in_roi_id = roi_pair.first;
-                        if (det.class_id == model->person_on_wheelchair_class_id) {
+                        if (det.class_id == model->person_class_id) roi_people_count[roi_pair.first]++; // 增加該 ROI 的人數計數
+                        else if (det.class_id == model->person_on_wheelchair_class_id) {
                             AILOG_INFO("Object " + std::to_string(i) + " (class: person on wheelchair" +
-                                    ") is in ROI " + std::to_string(roi_pair.first));
+                                    ") is in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
                         }
                     }
                 }
             }
-
-            // 將結果放入 outputQueue
-            int camera_id = input.camera_id;
-            {
-                std::lock_guard<std::mutex> lock(*outputQueueMutexes[camera_id]);
-                outputQueues[camera_id].push({output, count});
+            std::string log_message = "Inference for camera " + std::to_string(input.camera_id) + " completed. Detections: " + std::to_string(count);
+            for (const auto& roi_pair : roi_people_count) {
+                log_message += ", ROI " + std::to_string(roi_pair.first) + ": " + std::to_string(roi_pair.second) + " people";
             }
-            outputQueueConditions[camera_id]->notify_one(); // 通知等待的執行緒有新結果可用
+            AILOG_DEBUG(log_message);
+            // 將結果放入 outputQueue
+            {
+                std::lock_guard<std::mutex> lock(*outputQueueMutexes[input.camera_id]);
+                outputQueues[input.camera_id].push({output, count});
+            }
+            outputQueueConditions[input.camera_id]->notify_one(); // 通知等待的執行緒有新結果可用
         }
     }
 }

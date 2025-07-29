@@ -169,9 +169,9 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.y = static_cast<int>((cy - 0.5 * oh));
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
-            if (box.width > 0.5*640 || box.height > 0.5*640){
+            if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == person_class_id) {
                 // filter out large boxes
-                AILOG_INFO("Filter out large box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
+                AILOG_INFO("Filter out large person box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
                 continue;
             }
             if (class_id_point.y == person_on_wheelchair_class_id){ // pw special

@@ -263,7 +263,7 @@ namespace fall {
                     }
                 }
             }
-
+            AILOG_DEBUG("Fall detection completed for camera " + std::to_string(input.camera_id) + ". Detections: " + std::to_string(count));
             // 將結果放入 outputQueue
             int camera_id = input.camera_id;
             {

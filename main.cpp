@@ -77,9 +77,10 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
         auto loop_end = chrono::high_resolution_clock::now();
         auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
         int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        if (actual_delay == 0) {
-            cerr << "[YOLO] Processing took too long, skipping delay." << endl;
-        }
+        // if (actual_delay == 0) {
+        //     float actual_fps = 1000.0f / processing_time;
+        //     cerr << "[YOLO] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
+        // }
 
         this_thread::sleep_for(chrono::milliseconds(actual_delay));
     }
@@ -155,9 +156,10 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
         auto loop_end = chrono::high_resolution_clock::now();
         auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
         int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        if (actual_delay == 0) {
-            cerr << "[FALL] Processing took too long, skipping delay." << endl;
-        }
+        // if (actual_delay == 0) {
+        //     float actual_fps = 1000.0f / processing_time;
+        //     cerr << "[FALL] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
+        // }
 
         this_thread::sleep_for(chrono::milliseconds(actual_delay));
     }
@@ -232,9 +234,10 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
         auto loop_end = chrono::high_resolution_clock::now();
         auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
         int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        if (actual_delay == 0) {
-            cerr << "[CLIMB] Processing took too long, skipping delay." << endl;
-        }
+        // if (actual_delay == 0) {
+        //     float actual_fps = 1000.0f / processing_time;
+        //     cerr << "[CLIMB] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
+        // }
 
         this_thread::sleep_for(chrono::milliseconds(actual_delay));
     }
@@ -258,9 +261,9 @@ int main() {
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread
-    int yolo_fps = 20;
-    int fall_fps = 20;
-    int climb_fps = 20;
+    int yolo_fps = 5;
+    int fall_fps = 5;
+    int climb_fps = 5;
 
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;
