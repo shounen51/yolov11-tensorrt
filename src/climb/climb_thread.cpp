@@ -304,10 +304,14 @@ namespace climb {
                 float angle_deg = angle_rad * 180.0f / M_PI;  // 轉換為度數
 
                 // 只有當傾斜角度大於等於25度時才進行ROI相交判斷
-                if (angle_deg < 25.0f) {
-                    continue; // 如果角度小於25度，則不進行爬牆偵測
+                if (angle_deg < 15.0f) {
+                    continue;
                 }
-                AILOG_DEBUG("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical");
+                else if (angle_deg < 25.0f) {
+                    AILOG_DEBUG("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical, but not enough for climb detection");
+                    continue;
+                }
+                AILOG_INFO("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical");
 
                 // 計算Shoulder到Hip的向量
                 float vectorX = norm_HipX - norm_ShoulderX;

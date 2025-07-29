@@ -14,13 +14,13 @@ atomic<bool> should_stop(false);
 
 // Thread function for YOLO_COLOR detection
 void yolo_thread(const char* engine_path1, const char* engine_path2, const char* video_path,
-                 const char* log_file, int camera_id, int fps) {
+                 const char* log_file, int camera_amount, int fps) {
     const int MAX_OBJECTS = 100;
     svObjData_t results[MAX_OBJECTS];
 
     // Calculate delay based on FPS
     int delay_ms = 1000 / fps;
-    cout << "[YOLO] Thread started for camera " << camera_id << " at " << fps << " FPS" << endl;
+    cout << "[YOLO] Thread started for " << camera_amount << " cameras at " << fps << " FPS" << endl;
 
     // Open video file
     VideoCapture cap(video_path);
@@ -35,12 +35,14 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
     cout << "[YOLO] Video size: " << width << "x" << height << endl;
 
     // API 1: Initialize the model
-    svCreate_ObjectModules(functions::YOLO_COLOR, 10, engine_path1, engine_path2, 0.3f, log_file);
+    svCreate_ObjectModules(functions::YOLO_COLOR, 128, engine_path1, engine_path2, 0.3f, log_file);
 
-    // API 2: create a ROI
+    // API 2: create a ROI for each camera
     float points_x[] = {0.5f, 1.0f, 1.0f, 0.5f}; // Right half of screen
     float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f}; // Right half of screen
-    svCreate_ROI(camera_id, functions::YOLO_COLOR, 0, width, height, points_x, points_y, 4);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svCreate_ROI(camera_id, functions::YOLO_COLOR, 0, width, height, points_x, points_y, 4);
+    }
 
     Mat frame_bgr, frame_yuv;
     uint8_t* yuv_data = nullptr;
@@ -60,18 +62,23 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
-        // API 3: Process yuv image
-        int ok = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-        if (ok == 0) {
-            cerr << "[YOLO] Failed to process image." << endl;
-            break;
+        // API 3: Process yuv image for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int ok = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (ok == 0) {
+                cerr << "[YOLO] Failed to process image for camera " << camera_id << endl;
+                break;
+            }
         }
 
-        // API 4: Get results and discard them
-        int num = svObjectModules_getResult(functions::YOLO_COLOR, camera_id, results, MAX_OBJECTS, true);
-        if (num == -1) {
-            cerr << "[YOLO] Thread have been stopped." << endl;
-            break;
+        // API 4: Get results for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int num = svObjectModules_getResult(functions::YOLO_COLOR, camera_id, results, MAX_OBJECTS, true);
+            if (num == -1) {
+                cerr << "[YOLO] Thread have been stopped for camera " << camera_id << endl;
+                should_stop = true;
+                break;
+            }
         }
 
         auto loop_end = chrono::high_resolution_clock::now();
@@ -86,20 +93,22 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
     }
 
     // Cleanup
-    svRemove_ROIandWall(camera_id, functions::YOLO_COLOR, 0);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svRemove_ROIandWall(camera_id, functions::YOLO_COLOR, 0);
+    }
     cap.release();
-    cout << "\n[YOLO] Thread finished for camera " << camera_id << endl;
+    cout << "\n[YOLO] Thread finished for " << camera_amount << " cameras" << endl;
 }
 
 // Thread function for FALL detection
 void fall_thread(const char* engine_path1, const char* engine_path2, const char* video_path,
-                 const char* log_file, int camera_id, int fps) {
+                 const char* log_file, int camera_amount, int fps) {
     const int MAX_OBJECTS = 100;
     svObjData_t results[MAX_OBJECTS];
 
     // Calculate delay based on FPS
     int delay_ms = 1000 / fps;
-    cout << "[FALL] Thread started for camera " << camera_id << " at " << fps << " FPS" << endl;
+    cout << "[FALL] Thread started for " << camera_amount << " cameras at " << fps << " FPS" << endl;
 
     // Open video file
     VideoCapture cap(video_path);
@@ -114,12 +123,14 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
     cout << "[FALL] Video size: " << width << "x" << height << endl;
 
     // API 1: Initialize the model
-    svCreate_ObjectModules(functions::FALL, 10, engine_path1, engine_path2, 0.3f, log_file);
+    svCreate_ObjectModules(functions::FALL, 128, engine_path1, engine_path2, 0.3f, log_file);
 
-    // API 2: create a ROI
+    // API 2: create a ROI for each camera
     float points_x[] = {0.3f, 1.0f, 1.0f, 0.3f}; // Right part of screen
     float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f}; // Right part of screen
-    svCreate_ROI(camera_id, functions::FALL, 0, width, height, points_x, points_y, 4);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svCreate_ROI(camera_id, functions::FALL, 0, width, height, points_x, points_y, 4);
+    }
 
     Mat frame_bgr, frame_yuv;
     uint8_t* yuv_data = nullptr;
@@ -139,18 +150,23 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
-        // API 3: Process yuv image
-        int ok = svObjectModules_inputImageYUV(functions::FALL, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-        if (ok == 0) {
-            cerr << "[FALL] Failed to process image." << endl;
-            break;
+        // API 3: Process yuv image for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int ok = svObjectModules_inputImageYUV(functions::FALL, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (ok == 0) {
+                cerr << "[FALL] Failed to process image for camera " << camera_id << endl;
+                break;
+            }
         }
 
-        // API 4: Get results and discard them
-        int num = svObjectModules_getResult(functions::FALL, camera_id, results, MAX_OBJECTS, true);
-        if (num == -1) {
-            cerr << "[FALL] Thread have been stopped." << endl;
-            break;
+        // API 4: Get results for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int num = svObjectModules_getResult(functions::FALL, camera_id, results, MAX_OBJECTS, true);
+            if (num == -1) {
+                cerr << "[FALL] Thread have been stopped for camera " << camera_id << endl;
+                should_stop = true;
+                break;
+            }
         }
 
         auto loop_end = chrono::high_resolution_clock::now();
@@ -165,20 +181,22 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
     }
 
     // Cleanup
-    svRemove_ROIandWall(camera_id, functions::FALL, 0);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svRemove_ROIandWall(camera_id, functions::FALL, 0);
+    }
     cap.release();
-    cout << "\n[FALL] Thread finished for camera " << camera_id << endl;
+    cout << "\n[FALL] Thread finished for " << camera_amount << " cameras" << endl;
 }
 
 // Thread function for CLIMB detection
 void climb_thread(const char* engine_path1, const char* engine_path2, const char* video_path,
-                  const char* log_file, int camera_id, int fps) {
+                  const char* log_file, int camera_amount, int fps) {
     const int MAX_OBJECTS = 100;
     svObjData_t results[MAX_OBJECTS];
 
     // Calculate delay based on FPS
     int delay_ms = 1000 / fps;
-    cout << "[CLIMB] Thread started for camera " << camera_id << " at " << fps << " FPS" << endl;
+    cout << "[CLIMB] Thread started for " << camera_amount << " cameras at " << fps << " FPS" << endl;
 
     // Open video file
     VideoCapture cap(video_path);
@@ -192,12 +210,14 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     int height = static_cast<int>(cap.get(CAP_PROP_FRAME_HEIGHT));
 
     // API 1: Initialize the model
-    svCreate_ObjectModules(functions::CLIMB, 10, engine_path1, engine_path2, 0.3f, log_file);
+    svCreate_ObjectModules(functions::CLIMB, 128, engine_path1, engine_path2, 0.3f, log_file);
 
-    // API 2: create a wall
+    // API 2: create a wall for each camera
     float wall_points_x[] = {0.4734375f, 0.225f}; // Wall point coordinates
     float wall_points_y[] = {0.391667f, 0.610185f}; // Wall point coordinates
-    svCreate_wall(camera_id, functions::CLIMB, 0, width, height, wall_points_x, wall_points_y, 2);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svCreate_wall(camera_id, functions::CLIMB, 0, width, height, wall_points_x, wall_points_y, 2);
+    }
 
     Mat frame_bgr, frame_yuv;
     uint8_t* yuv_data = nullptr;
@@ -217,18 +237,23 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
-        // API 3: Process yuv image
-        int ok = svObjectModules_inputImageYUV(functions::CLIMB, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-        if (ok == 0) {
-            cerr << "[CLIMB] Failed to process image." << endl;
-            break;
+        // API 3: Process yuv image for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int ok = svObjectModules_inputImageYUV(functions::CLIMB, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (ok == 0) {
+                cerr << "[CLIMB] Failed to process image for camera " << camera_id << endl;
+                break;
+            }
         }
 
-        // API 4: Get results and discard them
-        int num = svObjectModules_getResult(functions::CLIMB, camera_id, results, MAX_OBJECTS, true);
-        if (num == -1) {
-            cerr << "[CLIMB] Thread have been stopped." << endl;
-            break;
+        // API 4: Get results for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int num = svObjectModules_getResult(functions::CLIMB, camera_id, results, MAX_OBJECTS, true);
+            if (num == -1) {
+                cerr << "[CLIMB] Thread have been stopped for camera " << camera_id << endl;
+                should_stop = true;
+                break;
+            }
         }
 
         auto loop_end = chrono::high_resolution_clock::now();
@@ -243,9 +268,11 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     }
 
     // Cleanup
-    svRemove_ROIandWall(camera_id, functions::CLIMB, 0);
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svRemove_ROIandWall(camera_id, functions::CLIMB, 0);
+    }
     cap.release();
-    cout << "\n[CLIMB] Thread finished for camera " << camera_id << endl;
+    cout << "\n[CLIMB] Thread finished for " << camera_amount << " cameras" << endl;
 }
 
 int main() {
@@ -261,9 +288,14 @@ int main() {
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread
-    int yolo_fps = 5;
+    int yolo_fps = 1;
     int fall_fps = 5;
-    int climb_fps = 5;
+    int climb_fps = 10;
+
+    // Camera amount settings
+    int yolo_camera_amount = 10;  // Process cameras 0, 1, 2
+    int fall_camera_amount = 5;  // Process cameras 0, 1, 2
+    int climb_camera_amount = 4;  // Process cameras 0, 1, 2
 
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;
@@ -273,10 +305,10 @@ int main() {
     cout << "CLIMB video: " << climb_video_path << " at " << climb_fps << " FPS" << endl;
     cout << "\nStarting three detection threads..." << endl;
 
-    // Create three threads with different camera IDs, video paths, and FPS
-    thread t_yolo(yolo_thread, yolo_engine_path1, yolo_engine_path2, yolo_video_path, log_file, 1, yolo_fps);
-    thread t_fall(fall_thread, fall_engine_path1, fall_engine_path2, fall_video_path, log_file, 2, fall_fps);
-    thread t_climb(climb_thread, climb_engine_path1, climb_engine_path2, climb_video_path, log_file, 3, climb_fps);
+    // Create three threads with camera_amount parameter
+    thread t_yolo(yolo_thread, yolo_engine_path1, yolo_engine_path2, yolo_video_path, log_file, yolo_camera_amount, yolo_fps);
+    thread t_fall(fall_thread, fall_engine_path1, fall_engine_path2, fall_video_path, log_file, fall_camera_amount, fall_fps);
+    thread t_climb(climb_thread, climb_engine_path1, climb_engine_path2, climb_video_path, log_file, climb_camera_amount, climb_fps);
 
     // Let threads run for some time
     cout << "\nThreads running... Press Enter to stop." << endl;
