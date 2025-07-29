@@ -78,6 +78,7 @@ extern "C" {
             YoloWithColor::inputQueueCondition.notify_one();
             if (YoloWithColor::inputQueue.size() > 100)
                 AILOG_WARN("Input queue size exceeds 100, input too fast.");
+            return YoloWithColor::inputQueue.size();
         }
         else if (function == functions::FALL) {
             if (fall::stopThread || camera_id >= fall::outputQueues.size()) return -1;
@@ -86,6 +87,7 @@ extern "C" {
             fall::inputQueueCondition.notify_one();
             if (fall::inputQueue.size() > 100)
                 AILOG_WARN("Input queue size exceeds 100, input too fast.");
+            return fall::inputQueue.size();
         }
         else if (function == functions::CLIMB) {
             if (climb::stopThread || camera_id >= climb::outputQueues.size()) return -1;
@@ -94,6 +96,7 @@ extern "C" {
             climb::inputQueueCondition.notify_one();
             if (climb::inputQueue.size() > 100)
                 AILOG_WARN("Input queue size exceeds 100, input too fast.");
+            return climb::inputQueue.size();
         }
         else {
             AILOG_ERROR("Unknown function type: " + std::to_string(function));

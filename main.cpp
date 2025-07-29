@@ -64,8 +64,8 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
 
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
-            int ok = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-            if (ok == 0) {
+            int q_size = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (q_size < 1) {
                 cerr << "[YOLO] Failed to process image for camera " << camera_id << endl;
                 break;
             }
@@ -152,8 +152,8 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
 
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
-            int ok = svObjectModules_inputImageYUV(functions::FALL, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-            if (ok == 0) {
+            int q_size = svObjectModules_inputImageYUV(functions::FALL, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (q_size < 1) {
                 cerr << "[FALL] Failed to process image for camera " << camera_id << endl;
                 break;
             }
@@ -239,8 +239,8 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
 
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
-            int ok = svObjectModules_inputImageYUV(functions::CLIMB, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
-            if (ok == 0) {
+            int q_size = svObjectModules_inputImageYUV(functions::CLIMB, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (q_size < 1) {
                 cerr << "[CLIMB] Failed to process image for camera " << camera_id << endl;
                 break;
             }
