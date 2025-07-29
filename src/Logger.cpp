@@ -23,7 +23,7 @@ void AILogger::setConsoleOnly(bool enable) {
 class AILogger::Impl {
 public:
     Impl(const std::string& logFilePath)
-        : logFilePath_(logFilePath), maxFileSize_(10 * 1024 * 1024) // 10MB
+        : logFilePath_(logFilePath), maxFileSize_(512 * 1024 * 1024) // 512MB
     {
         std::filesystem::path logPath(logFilePath_);
         if (logPath.has_parent_path()) {
@@ -60,10 +60,62 @@ private:
         auto size = std::filesystem::file_size(logFilePath_, ec);
         if (!ec && size >= maxFileSize_) {
             logFile.close();
-            std::string rotated = logFilePath_ + ".old";
-            std::filesystem::remove(rotated, ec); // ignore error
-            std::filesystem::rename(logFilePath_, rotated, ec); // ignore error
+
+            const int maxLogFiles = 200; // 可調整的保留檔案數量
+
+            // 只刪除最舊的檔案，然後將當前檔案移動到 .1
+            std::string oldestFile = logFilePath_ + "." + std::to_string(maxLogFiles);
+            std::filesystem::remove(oldestFile, ec); // 刪除最舊的檔案
+
+            // 將當前檔案重命名為帶時間戳的檔案名，避免大量重命名操作
+            auto now = std::chrono::system_clock::now();
+            std::time_t t = std::chrono::system_clock::to_time_t(now);
+            std::tm tm;
+        #if defined(_WIN32)
+            localtime_s(&tm, &t);
+        #else
+            localtime_r(&t, &tm);
+        #endif
+
+            std::ostringstream oss;
+            oss << logFilePath_ << "." << std::put_time(&tm, "%Y%m%d_%H%M%S");
+            std::string timestampedFile = oss.str();
+
+            std::filesystem::rename(logFilePath_, timestampedFile, ec);
+
+            // 清理舊檔案：保持檔案數量不超過 maxLogFiles
+            cleanupOldLogFiles(maxLogFiles);
+
             openLogFile();
+        }
+    }
+
+    void cleanupOldLogFiles(int maxFiles) {
+        std::error_code ec;
+        std::filesystem::path logDir = std::filesystem::path(logFilePath_).parent_path();
+        std::string logBaseName = std::filesystem::path(logFilePath_).filename().string();
+
+        std::vector<std::filesystem::directory_entry> logFiles;
+
+        // 收集所有相關的log檔案
+        for (const auto& entry : std::filesystem::directory_iterator(logDir, ec)) {
+            if (entry.is_regular_file() &&
+                entry.path().filename().string().find(logBaseName + ".") == 0) {
+                logFiles.push_back(entry);
+            }
+        }
+
+        // 按修改時間排序（最新的在前）
+        std::sort(logFiles.begin(), logFiles.end(),
+                  [](const auto& a, const auto& b) {
+                      std::error_code ec;
+                      return std::filesystem::last_write_time(a, ec) >
+                             std::filesystem::last_write_time(b, ec);
+                  });
+
+        // 刪除超過限制的舊檔案
+        for (size_t i = maxFiles; i < logFiles.size(); ++i) {
+            std::filesystem::remove(logFiles[i].path(), ec);
         }
     }
 
@@ -79,16 +131,17 @@ private:
 
     std::string formatLog(LogLevel level, const std::string& file, int line, const std::string& message) {
         std::ostringstream oss;
-        // Timestamp
+        // Timestamp with milliseconds
         auto now = std::chrono::system_clock::now();
         std::time_t t = std::chrono::system_clock::to_time_t(now);
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
         std::tm tm;
     #if defined(_WIN32)
         localtime_s(&tm, &t);
     #else
         localtime_r(&t, &tm);
     #endif
-        oss << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "]";
+        oss << "[" << std::put_time(&tm, "%Y-%m-%d %H:%M:%S") << "." << std::setfill('0') << std::setw(3) << ms.count() << "]";
         // PID
     #if defined(_WIN32)
         oss << " - [PID " << _getpid() << "]";

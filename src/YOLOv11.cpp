@@ -174,7 +174,7 @@ void YOLOv11::postprocess(vector<Detection>& output)
                 AILOG_INFO("Filter out large box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
                 continue;
             }
-            if (class_id_point.y == person_on_wheelchart_class_id){ // pw special
+            if (class_id_point.y == person_on_wheelchair_class_id){ // pw special
                 boxes_pw.push_back(box); // pw special
                 class_ids_pw.push_back(class_id_point.y); // pw special
                 confidences_pw.push_back(score); // pw special

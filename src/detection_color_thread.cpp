@@ -75,6 +75,7 @@ namespace YoloWithColor {
         AILOG_INFO("Inference thread started.");
         cudaStream_t stream;
         CUDA_CHECK(cudaStreamCreate(&stream));
+        int frame_counter = 0;
         while (!stopThread) {
             std::unique_lock<std::mutex> lock(inputQueueMutex);
 
@@ -82,11 +83,15 @@ namespace YoloWithColor {
             inputQueueCondition.wait(lock, [] { return !inputQueue.empty() || stopThread; });
 
             // 再次檢查條件，避免虛假喚醒
-            if (stopThread && inputQueue.empty()) break;
+            if (stopThread && inputQueue.empty()) {
+                AILOG_INFO("Stop signal received, exiting inference thread.");
+                break;
+            }
 
             // 從 inputQueue 中取出資料
             InputData input = inputQueue.front();
             inputQueue.pop();
+            frame_counter++;
             lock.unlock();
             // 取得 GPU buffers
             uint8_t* gpu_yuv_buffer = GetYuvGpuBuffer(input.image_data, input.width, input.height);
@@ -147,8 +152,6 @@ namespace YoloWithColor {
                     box_points = {{0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}}; // 如果類別是人則分上半身和下半身
                 std::vector<std::string> color_labels;
                 for (auto& point : box_points) {
-                    // std::cout << x1 + (det.bbox.width*point[0])/r << ", " << y1+(det.bbox.height*point[1])/r << ", "
-                    //           << x1+(det.bbox.width*point[2])/r << ", " << y1+(det.bbox.height*point[3])/r << std::endl;
                     cv::Mat personCrop = rgb_image(Rect(Point(x1 + (det.bbox.width*point[0])/r, y1 + (det.bbox.height*point[1])/r),
                                                         Point(x1 + (det.bbox.width*point[2])/r, y1 + (det.bbox.height*point[3])/r)));
 
@@ -188,6 +191,10 @@ namespace YoloWithColor {
                     cv::Point bottom_middle = (cv::Point(x1 * input.width, y2 * input.height) + cv::Point(x2 * input.width, y2 * input.height)) / 2;
                     if (roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
                         output[i].in_roi_id = roi_pair.first;
+                        if (det.class_id == model->person_on_wheelchair_class_id) {
+                            AILOG_INFO("Object " + std::to_string(i) + " (class: person on wheelchair" +
+                                    ") is in ROI " + std::to_string(roi_pair.first));
+                        }
                     }
                 }
             }

@@ -32,11 +32,20 @@ std::vector<char> readEngineFile(const std::string& engineFile) {
 namespace fall {
     ICudaEngine* engine;
     IExecutionContext* context;
+
+    // 跌倒检测类别常量
+    const int FALL_CLASS = 0;
+    const int SITONGROUND_CLASS = 1;
+    const int STAND_CLASS = 2;
+    const int OTHER_CLASS = 3;
+    const int FALLING_CLASS = 100; // 用於表示跌倒投票中的類別
+
     unordered_map<int, string> fall_classname = {
-        {0, "fall"},
-        {1, "sitonground"},
-        {2, "stand"},
-        {3, "other"}
+        {FALL_CLASS, "fall"},
+        {SITONGROUND_CLASS, "sitonground"},
+        {STAND_CLASS, "stand"},
+        {OTHER_CLASS, "other"},
+        {FALLING_CLASS, "falling"} // 用於表示跌倒投票中的類別
     };
     std::unique_ptr<YOLOv11> model;
     queue<InputData> inputQueue;
@@ -145,7 +154,6 @@ namespace fall {
             model->postprocess(detections);
 
             int count = std::min(static_cast<int>(detections.size()), input.max_output);
-            AILOG_INFO("Inference camera " + std::to_string(input.camera_id) + ", detected " + std::to_string(count) + " objects.");
 
             // YOLO input size（根據模型固定）
             const int INPUT_W = model->input_w;
@@ -201,6 +209,8 @@ namespace fall {
                 output[i].bbox_ymax = norm_y2;
                 output[i].class_id = det.class_id;
                 output[i].confidence = det.conf;
+                strncpy(output[i].pose, fall_classname[STAND_CLASS].c_str(), sizeof(output[i].pose) - 1);
+                output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
                 // 檢查是否在 ROI 內
                 if (roi_map_ptr == nullptr || roi_map_ptr->size() == 0) {
                     continue; // 如果沒有 ROI，則跳過
@@ -238,10 +248,11 @@ namespace fall {
                                 roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
                                 if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
                                     // 如果連續三個 frame 都有跌倒，則觸發警報
-                                    AILOG_WARN("Fall detected in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
-                                    fall_label = "fall"; // 強制標記為跌倒
+                                    AILOG_INFO("Fall detected in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
+                                    fall_label = fall_classname[FALL_CLASS]; // 強制標記為跌倒
                                 }else {
-                                    fall_label = "falling"; // 跌倒投票中
+                                    AILOG_DEBUG("Fall voting in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
+                                    fall_label = fall_classname[FALLING_CLASS]; // 跌倒投票中
                                 }
                             }
                             // 將跌倒類別寫入 output

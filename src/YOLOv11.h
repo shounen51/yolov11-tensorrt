@@ -26,7 +26,7 @@ public:
     int input_w;
     int input_h;
     int num_classes = 11;
-    int person_on_wheelchart_class_id = 10; // pw special
+    int person_on_wheelchair_class_id = 10; // pw special
     int person_class_id = 0;
 
     void preprocess(uint8_t* gpu_rgb_buffer, int im0_w, int im0_h, bool block=true);
