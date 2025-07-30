@@ -361,6 +361,7 @@ namespace climb {
                             cv::Point2f roi_point2 = points[j + 1];
                             // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
                             if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
+                                roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
                                 in_roi = true;
                                 if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
                                     climb_label = climb_classname[CLIMB_CLASS];
