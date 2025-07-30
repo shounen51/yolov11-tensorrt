@@ -157,8 +157,19 @@ namespace YoloWithColor {
                     box_points = {{0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}}; // 如果類別是人則分上半身和下半身
                 std::vector<std::string> color_labels;
                 for (auto& point : box_points) {
-                    cv::Mat personCrop = rgb_image(Rect(Point(x1 + (det.bbox.width*point[0])/r, y1 + (det.bbox.height*point[1])/r),
-                                                        Point(x1 + (det.bbox.width*point[2])/r, y1 + (det.bbox.height*point[3])/r)));
+                    // 計算裁剪區域的座標，並確保在圖像邊界內
+                    int crop_x1 = std::max(0, static_cast<int>(x1 + (det.bbox.width*point[0])/r));
+                    int crop_y1 = std::max(0, static_cast<int>(y1 + (det.bbox.height*point[1])/r));
+                    int crop_x2 = std::min(rgb_image.cols, static_cast<int>(x1 + (det.bbox.width*point[2])/r));
+                    int crop_y2 = std::min(rgb_image.rows, static_cast<int>(y1 + (det.bbox.height*point[3])/r));
+
+                    // 確保裁剪區域有效（寬度和高度都大於0）
+                    if (crop_x2 <= crop_x1 || crop_y2 <= crop_y1) {
+                        color_labels.push_back("unknown");
+                        continue;
+                    }
+
+                    cv::Mat personCrop = rgb_image(Rect(crop_x1, crop_y1, crop_x2 - crop_x1, crop_y2 - crop_y1));
 
                     vector<unsigned char> color = colorClassifier.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HSV);
                     int maxIndex = 0;
@@ -194,7 +205,10 @@ namespace YoloWithColor {
                 output[i].in_roi_id = -1; // 預設不在 ROI 內
                 for (auto& roi_pair : roi_map) {
                     cv::Point bottom_middle = (cv::Point(x1 * input.width, y2 * input.height) + cv::Point(x2 * input.width, y2 * input.height)) / 2;
-                    if (roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
+                    // 確保 bottom_middle 在 mask 邊界內
+                    if (bottom_middle.x >= 0 && bottom_middle.x < roi_pair.second.mask.cols &&
+                        bottom_middle.y >= 0 && bottom_middle.y < roi_pair.second.mask.rows &&
+                        roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
                         output[i].in_roi_id = roi_pair.first;
                         if (det.class_id == model->person_class_id) roi_people_count[roi_pair.first]++; // 增加該 ROI 的人數計數
                         else if (det.class_id == model->person_on_wheelchair_class_id) {

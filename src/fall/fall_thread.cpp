@@ -196,6 +196,16 @@ namespace fall {
                 float x2 = (det.bbox.x + det.bbox.width - pad_x) / r;
                 float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
 
+                // 確保座標在圖像邊界內
+                x1 = std::clamp(x1, 0.0f, static_cast<float>(input.width - 1));
+                y1 = std::clamp(y1, 0.0f, static_cast<float>(input.height - 1));
+                x2 = std::clamp(x2, 0.0f, static_cast<float>(input.width - 1));
+                y2 = std::clamp(y2, 0.0f, static_cast<float>(input.height - 1));
+
+                // 確保 x1 < x2 和 y1 < y2
+                if (x1 >= x2) x2 = x1 + 1;
+                if (y1 >= y2) y2 = y1 + 1;
+
                 // 正規化成 [0~1]
                 float norm_x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
                 float norm_y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
@@ -219,11 +229,27 @@ namespace fall {
                     ROI* roi_ptr = &roi_pair.second; // 指向原始數據
                     if (det.class_id == model->person_class_id) {
                         cv::Point bottom_middle = cv::Point(int((x1 + x2) / 2), int(y2));
-                        if (roi_ptr->mask.at<uchar>(bottom_middle) != 0) {
+                        // 確保 bottom_middle 在 mask 邊界內
+                        if (bottom_middle.x >= 0 && bottom_middle.x < roi_ptr->mask.cols &&
+                            bottom_middle.y >= 0 && bottom_middle.y < roi_ptr->mask.rows &&
+                            roi_ptr->mask.at<uchar>(bottom_middle) != 0) {
                             output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
                             // 如果在 ROI 內，做跌倒辨識
-                            cv::Mat personCrop = rgb_image(Rect(Point(x1, y1),
-                                                                Point(x2, y2)));
+                            // 確保裁剪座標在圖像邊界內
+                            int crop_x1 = std::max(0, static_cast<int>(x1));
+                            int crop_y1 = std::max(0, static_cast<int>(y1));
+                            int crop_x2 = std::min(rgb_image.cols, static_cast<int>(x2));
+                            int crop_y2 = std::min(rgb_image.rows, static_cast<int>(y2));
+
+                            // 確保裁剪區域有效
+                            if (crop_x2 <= crop_x1 || crop_y2 <= crop_y1) {
+                                AILOG_WARN("Invalid crop region for fall detection: (" +
+                                          std::to_string(crop_x1) + "," + std::to_string(crop_y1) + ") to (" +
+                                          std::to_string(crop_x2) + "," + std::to_string(crop_y2) + ")");
+                                continue;
+                            }
+
+                            cv::Mat personCrop = rgb_image(Rect(crop_x1, crop_y1, crop_x2 - crop_x1, crop_y2 - crop_y1));
                             cv::resize(personCrop, personCrop, cv::Size(224, 224));
                             personCrop.convertTo(personCrop, CV_32FC3, 1.0 / 255); // 歸一化到0~1
                             std::vector<cv::Mat> channels(3);

@@ -288,7 +288,7 @@ int main() {
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread
-    int yolo_fps = 1;
+    int yolo_fps = 2;
     int fall_fps = 5;
     int climb_fps = 10;
 
