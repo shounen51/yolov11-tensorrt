@@ -77,3 +77,11 @@ set(EXEC_SOURCES
 
 add_executable(yolov11_dll ${EXEC_SOURCES})
 target_link_libraries(yolov11_dll yolov11 ${OpenCV_LIBS})
+
+# === Main RTSP Detection executable ===
+set(MAIN_RTSP_SOURCES
+    main_rtsp.cpp
+)
+
+add_executable(main_rtsp ${MAIN_RTSP_SOURCES})
+target_link_libraries(main_rtsp yolov11 ${OpenCV_LIBS})

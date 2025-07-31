@@ -59,7 +59,7 @@ int main(int argc, char** argv) {
     float wall_points_y[] = {0.391667f, 0.610185f}; // Wall point coordinates
     // float wall_points_x[] = {0.46875f, 0.390625f}; //牆面點座標
     // float wall_points_y[] = {0.22222f, 0.583333f}; //牆面點座標
-    svCreate_wall(9, test_function, 0, width, height, wall_points_x, wall_points_y, 2);
+    svCreate_ROI(9, test_function, 0, width, height, wall_points_x, wall_points_y, 2);
 
     // load yuv image as a uint8_t array
     std::ifstream file(yuv_path, std::ios::binary);

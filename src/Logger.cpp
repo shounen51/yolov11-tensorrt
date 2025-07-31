@@ -37,11 +37,14 @@ public:
     void log(LogLevel level, const std::string& file, int line, const std::string& message) {
         std::lock_guard<std::mutex> lock(mtx);
         std::string logStr = formatLog(level, file, line, message);
-        if (!g_consoleOnly) {
+        if (g_consoleOnly) {
+            // 只輸出到 console
+            std::cout << logStr << std::endl;
+        } else {
+            // 只寫入檔案，不輸出到 console
             rotateIfNeeded();
             logFile << logStr << std::endl;
         }
-        std::cout << logStr << std::endl;
     }
 
 private:

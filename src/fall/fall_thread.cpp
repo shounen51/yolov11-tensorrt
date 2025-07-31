@@ -1,4 +1,3 @@
-#include "detection_color_thread.h"
 #include "fall_thread.h"
 #include "yolov11.h"
 #include "logging.h"
@@ -189,7 +188,12 @@ namespace fall {
 
             for (int i = 0; i < count; ++i) {
                 const auto& det = detections[i];
-
+                if (det.class_id != model->person_class_id) {
+                    continue; // 只處理人類檢測
+                }
+                if (det.bbox.width < 0.05 || det.bbox.height < 0.05) {
+                    continue; // 忽略過小的檢測框
+                }
                 // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
                 float x1 = (det.bbox.x - pad_x) / r;
                 float y1 = (det.bbox.y - pad_y) / r;

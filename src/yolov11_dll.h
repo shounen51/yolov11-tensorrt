@@ -101,7 +101,6 @@ YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id, unsig
 YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait=true);
 
 YOLOV11_API void svCreate_ROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
-YOLOV11_API void svCreate_wall(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 YOLOV11_API void svRemove_ROIandWall(int camera_id, int function_id, int roi_id);
 /**
  * 清理資源

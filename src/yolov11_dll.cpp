@@ -191,9 +191,14 @@ extern "C" {
         // 轉換 C 數組為 C++ vector
         std::vector<cv::Point2f> points;
         for (int i = 0; i < point_count; ++i) {
-            points.emplace_back(points_x[i], points_y[i]);
+            points.emplace_back(points_x[i],points_y[i]);
         }
-        cv::Mat mask = createROI(width, height, points);
+        cv::Mat mask;
+        if (function_id == functions::CLIMB) {
+            mask = cv::Mat::zeros(height, width, CV_8UC1);
+        } else {
+            mask = createROI(width, height, points);
+        }
         camera_function_roi_map[camera_id][function_id][roi_id] = {mask, points, width, height};
     }
 
@@ -211,34 +216,6 @@ extern "C" {
                 }
             }
         }
-    }
-
-    YOLOV11_API void svCreate_wall(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count) {
-        if (roi_id == -1) {
-            AILOG_ERROR("Wall ID cannot be -1, please provide a valid Wall ID.");
-            return;
-        }
-        if (camera_function_roi_map.find(camera_id) != camera_function_roi_map.end()) {
-            if (camera_function_roi_map[camera_id].find(function_id) != camera_function_roi_map[camera_id].end()) {
-                if (camera_function_roi_map[camera_id][function_id].find(roi_id) != camera_function_roi_map[camera_id][function_id].end()) {
-                    AILOG_WARN("Wall with id " + std::to_string(roi_id) + " already exists, updating.");
-                }
-            }
-        }
-
-        if (point_count < 2) {
-            AILOG_ERROR("Wall must have at least 2 points to form a line.");
-            return;
-        }
-        // 轉換 C 數組為 C++ vector
-        std::vector<cv::Point2f> points;
-        for (int i = 0; i < point_count; ++i) {
-            points.emplace_back(points_x[i], points_y[i]);
-        }
-        // 放入空白mask
-        cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
-        camera_function_roi_map[camera_id][function_id][roi_id] = {mask, points, width, height};
-        AILOG_INFO("Created extended wall with id " + std::to_string(roi_id));
     }
 
     YOLOV11_API void release() {

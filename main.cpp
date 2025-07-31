@@ -49,8 +49,6 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
 
     // Processing loop
     while (!should_stop) {
-        auto loop_start = chrono::high_resolution_clock::now();
-
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -62,6 +60,7 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
+        auto loop_start = chrono::high_resolution_clock::now();
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
             int q_size = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
@@ -80,16 +79,10 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
                 break;
             }
         }
-
         auto loop_end = chrono::high_resolution_clock::now();
-        auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        // if (actual_delay == 0) {
-        //     float actual_fps = 1000.0f / processing_time;
-        //     cerr << "[YOLO] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
-        // }
-
-        this_thread::sleep_for(chrono::milliseconds(actual_delay));
+        auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
+        int actual_fps = (1000 / inference_time) * camera_amount;
+        cout << "[YOLO] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
     }
 
     // Cleanup
@@ -137,8 +130,6 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
 
     // Processing loop
     while (!should_stop) {
-        auto loop_start = chrono::high_resolution_clock::now();
-
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -150,6 +141,7 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
+        auto loop_start = chrono::high_resolution_clock::now();
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
             int q_size = svObjectModules_inputImageYUV(functions::FALL, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
@@ -168,16 +160,10 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
                 break;
             }
         }
-
         auto loop_end = chrono::high_resolution_clock::now();
-        auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        // if (actual_delay == 0) {
-        //     float actual_fps = 1000.0f / processing_time;
-        //     cerr << "[FALL] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
-        // }
-
-        this_thread::sleep_for(chrono::milliseconds(actual_delay));
+        auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
+        int actual_fps = (1000 / inference_time) * camera_amount;
+        cout << "[FALL] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
     }
 
     // Cleanup
@@ -216,7 +202,7 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     float wall_points_x[] = {0.4734375f, 0.225f}; // Wall point coordinates
     float wall_points_y[] = {0.391667f, 0.610185f}; // Wall point coordinates
     for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
-        svCreate_wall(camera_id, functions::CLIMB, 0, width, height, wall_points_x, wall_points_y, 2);
+        svCreate_ROI(camera_id, functions::CLIMB, 0, width, height, wall_points_x, wall_points_y, 2);
     }
 
     Mat frame_bgr, frame_yuv;
@@ -224,8 +210,6 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
 
     // Processing loop
     while (!should_stop) {
-        auto loop_start = chrono::high_resolution_clock::now();
-
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -237,6 +221,7 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
         cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
         yuv_data = frame_yuv.data;
 
+        auto loop_start = chrono::high_resolution_clock::now();
         // API 3: Process yuv image for all cameras
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
             int q_size = svObjectModules_inputImageYUV(functions::CLIMB, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
@@ -255,16 +240,10 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
                 break;
             }
         }
-
         auto loop_end = chrono::high_resolution_clock::now();
-        auto processing_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_delay = max(0, delay_ms - static_cast<int>(processing_time));
-        // if (actual_delay == 0) {
-        //     float actual_fps = 1000.0f / processing_time;
-        //     cerr << "[CLIMB] Processing took too long, skipping delay. Actual FPS: " << actual_fps << endl;
-        // }
-
-        this_thread::sleep_for(chrono::milliseconds(actual_delay));
+        auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
+        int actual_fps = (1000 / inference_time) * camera_amount;
+        cout << "[CLIMB] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
     }
 
     // Cleanup

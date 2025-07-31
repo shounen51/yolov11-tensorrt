@@ -7,6 +7,7 @@
 #include <cuda_utils.h>
 #include <opencv2/opencv.hpp>
 #include <cmath>
+#include <chrono>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -243,15 +244,22 @@ namespace climb {
             }
 
             // 取得 roi
-            std::unordered_map<int, ROI> roi_map;
+            std::unordered_map<int, ROI>* roi_map_ptr = nullptr;
             if (camera_function_roi_map.find(input.camera_id) != camera_function_roi_map.end()) {
-                if (camera_function_roi_map[input.camera_id].find(functions::CLIMB) != camera_function_roi_map[input.camera_id].end())
-                    roi_map = camera_function_roi_map[input.camera_id][functions::CLIMB];
+                if (camera_function_roi_map[input.camera_id].find(functions::CLIMB) != camera_function_roi_map[input.camera_id].end()) {
+                    roi_map_ptr = &camera_function_roi_map[input.camera_id][functions::CLIMB];
+                }
             }
+
             ROI* roi_ptr = nullptr;
-            for (auto& roi_pair : roi_map) {
-                roi_ptr = &roi_pair.second; // 取得指針，指向原始數據
-                roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
+            if (roi_map_ptr) {
+                for (auto& roi_pair : *roi_map_ptr) {
+                    roi_ptr = &roi_pair.second; // 取得指針，指向原始數據
+                    roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
+                    for (int j = 0; j < roi_ptr->alarm.size(); ++j) {
+                        AILOG_DEBUG("ROI alarm[" + std::to_string(j) + "]: " + std::to_string(roi_ptr->alarm[j]));
+                    }
+                }
             }
 
             for (int i = 0; i < count; ++i) {
@@ -265,7 +273,8 @@ namespace climb {
                 float ShoulderY = static_cast<float>((skeletons[index].LeftShoulder.y + skeletons[index].RightShoulder.y) / 2 - pad_y) / r;
                 float HipX = static_cast<float>((skeletons[index].LeftHip.x + skeletons[index].RightHip.x) / 2 - pad_x) / r;
                 float HipY = static_cast<float>((skeletons[index].LeftHip.y + skeletons[index].RightHip.y) / 2 - pad_y) / r;
-
+                AILOG_DEBUG("Shoulder point: (" + std::to_string(ShoulderX) + "," + std::to_string(ShoulderY) + ")");
+                AILOG_DEBUG("Hip point: (" + std::to_string(HipX) + "," + std::to_string(HipY) + ")");
                 // 正規化成 [0~1]
                 float norm_x1 = std::clamp(x1 / input.width, 0.0f, 1.0f);
                 float norm_y1 = std::clamp(y1 / input.height, 0.0f, 1.0f);
@@ -341,50 +350,50 @@ namespace climb {
                     norm_HipX = std::clamp(extendedHipX, norm_x1, norm_x2);
                     norm_HipY = std::clamp(extendedHipY, norm_y1, norm_y2);
                 }
-
-                for (auto& roi_pair : roi_map) {
-                    ROI* roi_ptr = &roi_pair.second;
-                    bool in_roi = false;
-                    std::string climb_label = climb_classname[STAND_CLASS];
-
-                    // 使用Shoulder-Hip線段與ROI邊界進行相交判斷
-                    cv::Point2f shoulder_point(norm_ShoulderX, norm_ShoulderY);
-                    cv::Point2f hip_point(norm_HipX, norm_HipY);
-                    AILOG_DEBUG("Shoulder-Hip line: (" + std::to_string(shoulder_point.x) + "," + std::to_string(shoulder_point.y) + ") to (" +
-                            std::to_string(hip_point.x) + "," + std::to_string(hip_point.y) + ")");
-                    // 檢查Shoulder-Hip線段是否與ROI的任意邊界線段相交
-                    const std::vector<cv::Point2f>& points = roi_ptr->points;
-                    if (points.size() >= 2) {
-                        for (size_t j = 0; j < points.size() - 1; ++j) {
-                            // 獲取相鄰的兩個點形成ROI邊界線段
-                            cv::Point2f roi_point1 = points[j];
-                            cv::Point2f roi_point2 = points[j + 1];
-                            // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
-                            if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
-                                roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
-                                in_roi = true;
-                                if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
-                                    climb_label = climb_classname[CLIMB_CLASS];
-                                    AILOG_INFO("Climb detected: Shoulder-Hip line intersects with ROI " +
-                                            std::to_string(roi_pair.first) + " edge from (" +
-                                            std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
-                                            std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
-                                }else {
-                                    climb_label = climb_classname[CLIMBING_CLASS];
-                                    AILOG_DEBUG("Climb voting: Shoulder-Hip line intersects with ROI " +
-                                            std::to_string(roi_pair.first) + " edge from (" +
-                                            std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
-                                            std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
+                // 使用Shoulder-Hip線段與ROI邊界進行相交判斷
+                cv::Point2f shoulder_point(norm_ShoulderX, norm_ShoulderY);
+                cv::Point2f hip_point(norm_HipX, norm_HipY);
+                AILOG_DEBUG("Shoulder-Hip line: (" + std::to_string(shoulder_point.x) + "," + std::to_string(shoulder_point.y) + ") to (" +
+                        std::to_string(hip_point.x) + "," + std::to_string(hip_point.y) + ")");
+                if (roi_map_ptr) {
+                    for (auto& roi_pair : *roi_map_ptr) {
+                        ROI* roi_ptr = &roi_pair.second;
+                        bool in_roi = false;
+                        std::string climb_label = climb_classname[STAND_CLASS];
+                        // 檢查Shoulder-Hip線段是否與ROI的任意邊界線段相交
+                        const std::vector<cv::Point2f>& points = roi_ptr->points;
+                        if (points.size() >= 2) {
+                            for (size_t j = 0; j < points.size() - 1; ++j) {
+                                // 獲取相鄰的兩個點形成ROI邊界線段
+                                cv::Point2f roi_point1 = points[j];
+                                cv::Point2f roi_point2 = points[j + 1];
+                                // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
+                                if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
+                                    roi_ptr->alarm[0] = 1; // 設定此 frame 有人爬牆
+                                    in_roi = true;
+                                    if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
+                                        climb_label = climb_classname[CLIMB_CLASS];
+                                        AILOG_INFO("Climb detected: Shoulder-Hip line intersects with ROI " +
+                                                std::to_string(roi_pair.first) + " edge from (" +
+                                                std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
+                                                std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
+                                    }else {
+                                        climb_label = climb_classname[CLIMBING_CLASS];
+                                        AILOG_DEBUG("Climb voting: Shoulder-Hip line intersects with ROI " +
+                                                std::to_string(roi_pair.first) + " edge from (" +
+                                                std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
+                                                std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
+                                    }
+                                    break; // 找到相交就跳出循環
                                 }
-                                break; // 找到相交就跳出循環
                             }
                         }
-                    }
-                    if (in_roi){
-                        output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
-                        strncpy(output[i].climb, climb_label.c_str(), sizeof(output[i].climb) - 1); // 設定姿勢為 "climb"
-                        output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字符串結尾
-                        break; // 找到一個相交的ROI就足夠了
+                        if (in_roi){
+                            output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
+                            strncpy(output[i].climb, climb_label.c_str(), sizeof(output[i].climb) - 1); // 設定姿勢為 "climb"
+                            output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字符串結尾
+                            break; // 找到一個相交的ROI就足夠了
+                        }
                     }
                 }
             }
