@@ -18,6 +18,17 @@ struct ROI {
 };
 extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, ROI>>> camera_function_roi_map;
 
+struct MRTRedlightROI {
+    cv::Mat mask;
+    std::vector<cv::Point2f> points;
+    cv::Point left_top; // 左上角點
+    cv::Point right_bottom; // 右下角點
+    int width;
+    int height;
+    std::bitset<3> alarm;  // 3位的位元集合，用於警報狀態
+};
+extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, MRTRedlightROI>>> MRTRedlightROI_map;
+
 // points is 0~1
 cv::Mat createROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 
@@ -102,6 +113,9 @@ YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData
 
 YOLOV11_API void svCreate_ROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 YOLOV11_API void svRemove_ROIandWall(int camera_id, int function_id, int roi_id);
+YOLOV11_API void svCreate_MRTRedlightROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+YOLOV11_API void svRemove_MRTRedlightROI(int camera_id, int function_id, int roi_id);
+
 /**
  * 清理資源
  */

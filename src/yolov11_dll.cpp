@@ -12,6 +12,7 @@
 #include <opencv2/opencv.hpp>
 
 std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, ROI>>> camera_function_roi_map;
+std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, MRTRedlightROI>>> MRTRedlightROI_map;
 
 cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
     cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
@@ -23,9 +24,9 @@ cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
     for (const auto& pt : points) {
         scaled_points.emplace_back(pt.x * width, pt.y * height);
     }
-    cv::fillConvexPoly(mask, scaled_points, cv::Scalar(1));
+    cv::fillConvexPoly(mask, scaled_points, cv::Scalar(255));
     // show mask for debugging
-    // cv::imshow("ROI Mask", mask);
+    // cv::imshow("ROI Mask Full", mask);
     // cv::waitKey(1); // 確保 mask 能夠顯示出來
     return mask;
 }
@@ -213,6 +214,60 @@ extern "C" {
                     AILOG_INFO("Removed ROI with id " + std::to_string(roi_id));
                 } else {
                     AILOG_WARN("ROI with id " + std::to_string(roi_id) + " does not exist.");
+                }
+            }
+        }
+    }
+
+    YOLOV11_API void svCreate_MRTRedlightROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count) {
+        if (roi_id == -1) {
+            AILOG_ERROR("ROI ID cannot be -1, please provide a valid ROI ID.");
+            return;
+        }
+        if (MRTRedlightROI_map.find(camera_id) != MRTRedlightROI_map.end()) {
+            if (MRTRedlightROI_map[camera_id].find(function_id) != MRTRedlightROI_map[camera_id].end()) {
+                if (MRTRedlightROI_map[camera_id][function_id].find(roi_id) != MRTRedlightROI_map[camera_id][function_id].end()) {
+                    AILOG_WARN("ROI with id " + std::to_string(roi_id) + " already exists, updating.");
+                }
+            }
+        }
+        // 轉換 C 數組為 C++ vector
+        std::vector<cv::Point2f> points;
+        for (int i = 0; i < point_count; ++i) {
+            points.emplace_back(points_x[i], points_y[i]);
+        }
+        cv::Mat mask = createROI(width, height, points);
+
+        // Find the minimum and maximum coordinates from all points
+        float min_x = points[0].x, max_x = points[0].x;
+        float min_y = points[0].y, max_y = points[0].y;
+
+        for (const auto& point : points) {
+            min_x = std::min(min_x, point.x);
+            max_x = std::max(max_x, point.x);
+            min_y = std::min(min_y, point.y);
+            max_y = std::max(max_y, point.y);
+        }
+
+        cv::Point left_top = cv::Point(static_cast<int>(min_x * width), static_cast<int>(min_y * height));
+        cv::Point right_bottom = cv::Point(static_cast<int>(max_x * width), static_cast<int>(max_y * height));
+        MRTRedlightROI_map[camera_id][function_id][roi_id] = {mask, points, left_top, right_bottom, width, height, std::bitset<3>()};
+        AILOG_INFO("Created MRTRedlight ROI with id " + std::to_string(roi_id) +
+                 ", left_top: (" + std::to_string(left_top.x) + "," + std::to_string(left_top.y) + "), " +
+                 "right_bottom: (" + std::to_string(right_bottom.x) + "," + std::to_string(right_bottom.y) + ")");
+    }
+
+    YOLOV11_API void svRemove_MRTRedlightROI(int camera_id, int function_id, int roi_id) {
+        auto it = MRTRedlightROI_map.find(camera_id);
+        if (it != MRTRedlightROI_map.end()) {
+            auto it2 = it->second.find(function_id);
+            if (it2 != it->second.end()) {
+                auto it3 = it2->second.find(roi_id);
+                if (it3 != it2->second.end()) {
+                    it2->second.erase(it3);
+                    AILOG_INFO("Removed MRTRedlight ROI with id " + std::to_string(roi_id));
+                } else {
+                    AILOG_WARN("MRTRedlight ROI with id " + std::to_string(roi_id) + " does not exist.");
                 }
             }
         }

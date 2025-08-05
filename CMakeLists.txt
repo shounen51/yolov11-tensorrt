@@ -36,7 +36,7 @@ set(COMMON_SOURCES
     src/ColorClassifier/ColorClassifier.cpp
     src/YUV420ToRGB/YUV420ToRGB.cu
     src/fall/fall_thread.cpp
-    src/climb/climb_thread.cpp
+    src/climb/climb_thread_MRT.cpp
 )
 set(COMMON_HEADERS
     src/yolov11.h
@@ -50,7 +50,7 @@ set(COMMON_HEADERS
     src/ColorClassifier/ColorClassifier.h
     src/YUV420ToRGB/YUV420ToRGB.h
     src/fall/fall_thread.h
-    src/climb/climb_thread.h
+    src/climb/climb_thread_MRT.h
 )
 
 # === DLL target ===
@@ -85,3 +85,12 @@ set(MAIN_RTSP_SOURCES
 
 add_executable(main_rtsp ${MAIN_RTSP_SOURCES})
 target_link_libraries(main_rtsp yolov11 ${OpenCV_LIBS})
+
+# === Color Test executable ===
+set(MAIN_TEST_SOURCES
+    main_test.cpp
+    src/ColorClassifier/ColorClassifier.cpp
+)
+
+add_executable(main_test ${MAIN_TEST_SOURCES})
+target_link_libraries(main_test ${OpenCV_LIBS})

@@ -218,10 +218,15 @@ std::vector<unsigned char> HSVColorClassifier::classifyStatistics(cv::Mat image,
         {
             for (int col = 0; col < sampleColCount; col++)
             {
-                sampleImg.ptr<cv::Vec3b>(row,col)[0] =
-                    image.ptr<cv::Vec3b>(rowIds[row], colIds[col])[0];
-                sampleMask.ptr<uchar>(row,col)[0] =
-                    mask.ptr<uchar>(rowIds[row], colIds[col])[0];
+                // 複製所有三個通道 (BGR)
+                cv::Vec3b& samplePixel = sampleImg.at<cv::Vec3b>(row, col);
+                const cv::Vec3b& originalPixel = image.at<cv::Vec3b>(rowIds[row], colIds[col]);
+                samplePixel[0] = originalPixel[0];  // B
+                samplePixel[1] = originalPixel[1];  // G
+                samplePixel[2] = originalPixel[2];  // R
+
+                // 複製遮罩
+                sampleMask.at<uchar>(row, col) = mask.at<uchar>(rowIds[row], colIds[col]);
             }
         }
 
@@ -253,7 +258,11 @@ std::vector<unsigned char> HSVColorClassifier::classifyStatistics(cv::Mat image,
 
         for (int label_i = 0; label_i < labels.size(); label_i++)
         {
-            result_f[int(labels[label_i])] += _scale;
+            unsigned char labelValue = labels[label_i];
+            // 檢查數組越界
+            if (labelValue < result_f.size()) {
+                result_f[labelValue] += _scale;
+            }
         }
         ptrImg++;
         colorCount++;
@@ -261,11 +270,13 @@ std::vector<unsigned char> HSVColorClassifier::classifyStatistics(cv::Mat image,
     result.assign(result_f.size(), 0);
 
     // transform to output datatype
-    float scale = float(usePercent ? 100 : 255) / colorCount;
-    for (int _i = 0; _i < result_f.size(); _i++)
-    {
-        float val = result_f[_i] * scale + 0.4;
-        result[_i] = unsigned char(val > 255 ? 255 : val);
+    if (colorCount > 0) {  // 避免除零錯誤
+        float scale = float(usePercent ? 100 : 255) / colorCount;
+        for (int _i = 0; _i < result_f.size(); _i++)
+        {
+            float val = result_f[_i] * scale + 0.5f;  // 改為 0.5f 以獲得更好的四捨五入
+            result[_i] = unsigned char(val > 255 ? 255 : val);
+        }
     }
 
     return result;
