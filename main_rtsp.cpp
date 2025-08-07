@@ -9,7 +9,8 @@ using namespace cv;
 // 模式枚舉
 enum DrawMode {
     NORMAL_ROI_MODE = 0,
-    REDLIGHT_ROI_MODE = 1
+    REDLIGHT_ROI_MODE = 1,
+    CROSSINGLINE_ROI_MODE = 2
 };
 
 // Global variables for mouse callback
@@ -29,6 +30,11 @@ int next_redlight_roi_id = 0;  // For assigning redlight ROI IDs
 
 // Store created redlight ROIs for display
 vector<vector<Point2f>> created_redlight_rois;  // Store all created redlight ROI polygons
+
+// Crossing line variables
+vector<Point2f> crossingline_clicked_points;  // Store crossing line points (max 4)
+bool crossingline_created = false;
+vector<Point2f> created_crossing_line;  // Store the created crossing line points (4 points)
 
 // Video orientation correction variables
 bool video_needs_rotation = false;
@@ -92,12 +98,21 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
             cout << "[MOUSE] Normal ROI - Added point " << clicked_points.size()
                  << " at pixel(" << x << ", " << y << ") = normalized("
                  << new_point.x << ", " << new_point.y << ")" << endl;
-        } else {
+        } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
             redlight_clicked_points.push_back(new_point);
             redlight_close_polygon = false;  // Reset close flag when adding new point
             cout << "[MOUSE] Redlight ROI - Added point " << redlight_clicked_points.size()
                  << " at pixel(" << x << ", " << y << ") = normalized("
                  << new_point.x << ", " << new_point.y << ")" << endl;
+        } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
+            if (crossingline_clicked_points.size() < 4) {  // Maximum 4 points for crossing line
+                crossingline_clicked_points.push_back(new_point);
+                cout << "[MOUSE] Crossing Line - Added point " << crossingline_clicked_points.size()
+                     << " at pixel(" << x << ", " << y << ") = normalized("
+                     << new_point.x << ", " << new_point.y << ")" << endl;
+            } else {
+                cout << "[MOUSE] Crossing Line - Maximum 4 points allowed" << endl;
+            }
         }
 
         point_clicked = true;
@@ -131,7 +146,7 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                 cout << "[MOUSE] Normal ROI - Need at least 3 points to create ROI (current: "
                      << clicked_points.size() << ")" << endl;
             }
-        } else {
+        } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
             if (redlight_clicked_points.size() >= 3) {  // Need at least 3 points to create ROI
                 redlight_close_polygon = true;
 
@@ -162,6 +177,36 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                 cout << "[MOUSE] Redlight ROI - Need at least 3 points to create ROI (current: "
                      << redlight_clicked_points.size() << ")" << endl;
             }
+        } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
+            if (crossingline_clicked_points.size() == 4) {  // Need exactly 4 points for crossing line
+                // Remove existing crossing line
+                svRemove_CrossingLine(current_camera_id, current_function, 0);
+                cout << "[MOUSE] Crossing Line - Removed existing crossing line" << endl;
+
+                // Create new crossing line using clicked points
+                vector<float> points_x, points_y;
+                for (const auto& pt : crossingline_clicked_points) {
+                    points_x.push_back(pt.x);  // Already normalized 0-1
+                    points_y.push_back(pt.y);  // Already normalized 0-1
+                }
+
+                // Create new crossing line
+                svCreate_CrossingLine(current_camera_id, current_function, 0,
+                                    frame_width_global, frame_height_global,
+                                    points_x.data(), points_y.data(), 4);
+
+                cout << "[MOUSE] Crossing Line - Created new crossing line with 4 points" << endl;
+
+                // Save the created crossing line for display
+                created_crossing_line = crossingline_clicked_points;
+                crossingline_created = true;
+
+                // Clear points after creating crossing line
+                crossingline_clicked_points.clear();
+            } else {
+                cout << "[MOUSE] Crossing Line - Need exactly 4 points to create crossing line (current: "
+                     << crossingline_clicked_points.size() << ")" << endl;
+            }
         }
     }
     else if (event == EVENT_MBUTTONDOWN) {
@@ -172,7 +217,7 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
             // Remove existing ROI/Wall without creating new one
             svRemove_ROIandWall(current_camera_id, current_function, 0);
             cout << "[MOUSE] Normal ROI - Cleared all points and removed ROI/Wall" << endl;
-        } else {
+        } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
             redlight_clicked_points.clear();
             redlight_close_polygon = false;
             created_redlight_rois.clear();  // Clear all created redlight ROIs from display
@@ -182,6 +227,13 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
             }
             next_redlight_roi_id = 0;
             cout << "[MOUSE] Redlight ROI - Cleared all points and removed all MRT Redlight ROIs" << endl;
+        } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
+            crossingline_clicked_points.clear();
+            created_crossing_line.clear();
+            crossingline_created = false;
+            // Remove crossing line
+            svRemove_CrossingLine(current_camera_id, current_function, 0);
+            cout << "[MOUSE] Crossing Line - Cleared all points and removed crossing line" << endl;
         }
 
         point_clicked = false;
@@ -219,10 +271,15 @@ void printUsage(const char* program_name) {
     cout << "  " << program_name << " climb video.mp4 log/climb.log 10" << endl;
     cout << "  " << program_name << " yolo test.avi log/yolo.log 5 180" << endl;
     cout << "\n交互控制:" << endl;
-    cout << "  鼠标左键    点击添加点到多边形" << endl;
-    cout << "  鼠标右键    创建ROI区域(需至少3个点)" << endl;
-    cout << "  鼠标中键    清除所有点并重置为全屏ROI" << endl;
+    cout << "  鼠标左键    点击添加点到多边形/线段" << endl;
+    cout << "  鼠标右键    创建ROI区域/穿越线段" << endl;
+    cout << "  鼠标中键    清除所有点并重置" << endl;
+    cout << "  Tab键       切换ROI模式(正常/红灯/穿越线)" << endl;
     cout << "  ESC键       退出程序" << endl;
+    cout << "\n穿越线模式:" << endl;
+    cout << "  - 需要4个点：前2个点构成第一条线段，后2个点构成第二条线段" << endl;
+    cout << "  - 两条线段用不同颜色显示（青色和黄色）" << endl;
+    cout << "  - 用于检测物体穿越特定线段的行为" << endl;
 }
 
 void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, functions function_type) {
@@ -230,8 +287,18 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     int frame_height = frame.rows;
 
     // Draw mode information at the top
-    string mode_text = (current_draw_mode == NORMAL_ROI_MODE) ? "Mode: Normal ROI (Tab to switch)" : "Mode: Redlight ROI (Tab to switch)";
-    Scalar mode_color = (current_draw_mode == NORMAL_ROI_MODE) ? Scalar(0, 255, 0) : Scalar(0, 0, 255);  // Green for normal, Red for redlight
+    string mode_text;
+    Scalar mode_color;
+    if (current_draw_mode == NORMAL_ROI_MODE) {
+        mode_text = "Mode: Normal ROI (Tab to switch)";
+        mode_color = Scalar(0, 255, 0);  // Green
+    } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
+        mode_text = "Mode: Redlight ROI (Tab to switch)";
+        mode_color = Scalar(0, 0, 255);  // Red
+    } else {
+        mode_text = "Mode: Crossing Line ROI (Tab to switch)";
+        mode_color = Scalar(255, 0, 255);  // Magenta
+    }
     putText(frame, mode_text, Point(10, 60), FONT_HERSHEY_SIMPLEX, 0.7, mode_color, 2);
 
     // Always draw normal ROI points if they exist
@@ -333,18 +400,83 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }
     }
 
+    // Draw created crossing line (always show if exists)
+    if (crossingline_created && created_crossing_line.size() == 4) {
+        // Convert normalized coordinates to pixel coordinates
+        vector<Point> pixel_points;
+        for (const auto& pt : created_crossing_line) {
+            int x = static_cast<int>(pt.x * frame_width);
+            int y = static_cast<int>(pt.y * frame_height);
+            pixel_points.push_back(Point(x, y));
+        }
+
+        // Draw first line segment (points 0-1) in cyan
+        line(frame, pixel_points[0], pixel_points[1], Scalar(255, 255, 0), 3);
+        // Draw second line segment (points 2-3) in yellow
+        line(frame, pixel_points[2], pixel_points[3], Scalar(0, 255, 255), 3);
+
+        // Draw points as small circles
+        for (size_t i = 0; i < pixel_points.size(); i++) {
+            Scalar point_color = (i < 2) ? Scalar(255, 255, 0) : Scalar(0, 255, 255);  // Cyan for first line, Yellow for second
+            circle(frame, pixel_points[i], 4, point_color, -1);
+
+            // Draw point number
+            string point_text = "C" + to_string(i + 1);
+            putText(frame, point_text, Point(pixel_points[i].x + 8, pixel_points[i].y - 8),
+                    FONT_HERSHEY_SIMPLEX, 0.4, point_color, 1);
+        }
+    }
+
+    // Draw current crossing line points being created (only in crossing line mode)
+    if (current_draw_mode == CROSSINGLINE_ROI_MODE && !crossingline_clicked_points.empty()) {
+        // Convert normalized coordinates to pixel coordinates
+        vector<Point> pixel_points;
+        for (const auto& pt : crossingline_clicked_points) {
+            int x = static_cast<int>(pt.x * frame_width);
+            int y = static_cast<int>(pt.y * frame_height);
+            pixel_points.push_back(Point(x, y));
+        }
+
+        // Draw points as circles
+        for (size_t i = 0; i < pixel_points.size(); i++) {
+            Scalar point_color = (i < 2) ? Scalar(255, 255, 0) : Scalar(0, 255, 255);  // Cyan for first line, Yellow for second
+            circle(frame, pixel_points[i], 5, point_color, -1);
+
+            // Draw point number
+            string point_text = to_string(i + 1);
+            putText(frame, point_text, Point(pixel_points[i].x + 10, pixel_points[i].y - 10),
+                    FONT_HERSHEY_SIMPLEX, 0.5, point_color, 1);
+        }
+
+        // Draw line segments as they are being created
+        if (pixel_points.size() >= 2) {
+            // Draw first line segment (points 0-1)
+            line(frame, pixel_points[0], pixel_points[1], Scalar(255, 255, 0), 3);
+        }
+        if (pixel_points.size() >= 4) {
+            // Draw second line segment (points 2-3)
+            line(frame, pixel_points[2], pixel_points[3], Scalar(0, 255, 255), 3);
+        }
+    }
+
     // Display instructions based on current mode
     if (current_draw_mode == NORMAL_ROI_MODE) {
         string instruction = "Normal ROI - Points: " + to_string(clicked_points.size()) +
                            " | L-Click: Add | R-Click: Create ROI | M-Click: Reset";
         putText(frame, instruction, Point(10, frame_height - 20),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 255), 1);
-    } else {
+    } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
         string instruction = "Redlight ROI - Points: " + to_string(redlight_clicked_points.size()) +
                            " | Created: " + to_string(created_redlight_rois.size()) +
                            " | L-Click: Add | R-Click: Create MRT ROI | M-Click: Clear All";
         putText(frame, instruction, Point(10, frame_height - 20),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 100, 255), 1);
+    } else {
+        string instruction = "Crossing Line - Points: " + to_string(crossingline_clicked_points.size()) + "/4" +
+                           " | Created: " + (crossingline_created ? "Yes" : "No") +
+                           " | L-Click: Add (max 4) | R-Click: Create Line | M-Click: Clear";
+        putText(frame, instruction, Point(10, frame_height - 20),
+                FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 255), 1);
     }
 
     for (int i = 0; i < num_objects; i++) {
@@ -397,6 +529,11 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         // 画边界框
         rectangle(frame, Point(x1, y1), Point(x2, y2), color, 2);
 
+        // 添加追蹤ID到標籤
+        if (obj.track_id != -1) {
+            label = "ID:" + to_string(obj.track_id) + " " + label;
+        }
+
         // 画标签背景
         int baseline = 0;
         Size text_size = getTextSize(label, FONT_HERSHEY_SIMPLEX, 0.5, 1, &baseline);
@@ -405,6 +542,15 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
         // 画标签文字
         putText(frame, label, Point(x1, y1 - 5), FONT_HERSHEY_SIMPLEX, 0.5, text_color, 2);
+
+        // 在目標中心畫一個追蹤點 - 使用上半部框的中心作為參考點
+        if (obj.track_id != -1) {
+            int center_x = (x1 + x2) / 2;
+            // 將參考點改為上半部框的中心 (y座標向上移動1/4)
+            int bbox_height = y2 - y1;
+            int center_y = y1 + bbox_height / 4;
+            circle(frame, Point(center_x, center_y), 3, Scalar(255, 255, 0), -1);
+        }
     }
 }int main(int argc, char* argv[]) {
     // Check minimum arguments
@@ -624,8 +770,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             // Count objects that trigger red boxes (in ROI)
             switch (selected_function) {
                 case functions::YOLO_COLOR:
-                    if (obj.in_roi_id != -1) {
-                        red_box_count++;
+                    if (obj.crossing_line_id != -1) {
+                        red_box_count += obj.crossing_line_direction;
                     }
                     break;
                 case functions::FALL:
@@ -666,12 +812,14 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }        // Display frame
         imshow(window_name, frame_bgr);
 
-        // For video files, add delay to maintain target frame rate
+        // For video files, add delay to maintain target frame rate (subtract processing time)
         int wait_time = 1;
         if (is_video_file && target_fps > 0) {
-            wait_time = max(1, int(1000.0 / target_fps));  // Use target FPS for timing
+            int target_frame_time = int(1000.0 / target_fps);  // Target time per frame in ms
+            wait_time = max(1, target_frame_time - static_cast<int>(inference_time));
         } else if (is_video_file && fps > 0) {
-            wait_time = max(1, int(1000.0 / fps));  // Use original FPS
+            int original_frame_time = int(1000.0 / fps);  // Original time per frame in ms
+            wait_time = max(1, original_frame_time - static_cast<int>(inference_time));
         }
 
         // Check for key presses
@@ -680,10 +828,13 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             cout << "[INFO] ESC pressed, exiting..." << endl;
             break;
         } else if (key == 9) { // Tab key
-            // Switch between normal ROI and redlight ROI modes
+            // Switch between ROI modes: Normal -> Redlight -> Crossing Line -> Normal
             if (current_draw_mode == NORMAL_ROI_MODE) {
                 current_draw_mode = REDLIGHT_ROI_MODE;
                 cout << "[MODE] Switched to Redlight ROI Mode" << endl;
+            } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
+                current_draw_mode = CROSSINGLINE_ROI_MODE;
+                cout << "[MODE] Switched to Crossing Line ROI Mode" << endl;
             } else {
                 current_draw_mode = NORMAL_ROI_MODE;
                 cout << "[MODE] Switched to Normal ROI Mode" << endl;

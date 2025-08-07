@@ -10,9 +10,11 @@
 #include <cuda_utils.h>
 #include <memory>
 #include <opencv2/opencv.hpp>
+#include <filesystem>
 
 std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, ROI>>> camera_function_roi_map;
 std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, MRTRedlightROI>>> MRTRedlightROI_map;
+std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, CrossingLineROI>>> CrossingLineROI_map;
 
 cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
     cv::Mat mask = cv::Mat::zeros(height, width, CV_8UC1);
@@ -31,6 +33,75 @@ cv::Mat createROI(int width, int height, std::vector<cv::Point2f>& points) {
     return mask;
 }
 
+// 線段相交判斷函數實現
+namespace GeometryUtils {
+    // 計算向量叉積 (p1-p0) × (p2-p0)
+    YOLOV11_API float crossProduct(cv::Point2f p0, cv::Point2f p1, cv::Point2f p2) {
+        return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
+    }
+
+    // 檢查點是否在線段上（假設點已經共線）
+    YOLOV11_API bool onSegment(cv::Point2f p, cv::Point2f q, cv::Point2f r) {
+        return (q.x <= std::max(p.x, r.x) && q.x >= std::min(p.x, r.x) &&
+                q.y <= std::max(p.y, r.y) && q.y >= std::min(p.y, r.y));
+    }
+
+    // 判斷兩條線段是否相交，並返回p1相對於q1q2線段的位置關係
+    // 線段1: p1-p2, 線段2: q1-q2
+    // 返回值：0=不相交, -1=p1在q1q2的A側, 1=p1在q1q2的B側
+    YOLOV11_API int doIntersect(cv::Point2f q1, cv::Point2f q2, cv::Point2f p1, cv::Point2f p2) {
+        // 計算p1和p2相對於q1q2線段的位置
+        float d1 = crossProduct(q1, q2, p1);  // p1相對於q1q2的叉積
+        float d2 = crossProduct(q1, q2, p2);  // p2相對於q1q2的叉積
+        float d3 = crossProduct(p1, p2, q1);  // q1相對於p1p2的叉積
+        float d4 = crossProduct(p1, p2, q2);  // q2相對於p1p2的叉積
+
+        // 判斷線段是否相交
+        bool intersect = false;
+        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+            intersect = true;
+        }
+
+        // 特殊情況：點共線且重疊
+        if (d1 == 0 && onSegment(q1, p1, q2)) intersect = true;
+        if (d2 == 0 && onSegment(q1, p2, q2)) intersect = true;
+        if (d3 == 0 && onSegment(p1, q1, p2)) intersect = true;
+        if (d4 == 0 && onSegment(p1, q2, p2)) intersect = true;
+
+        // 如果不相交，根據p1相對於q1q2的位置返回值
+        if (!intersect) {
+            return 0;  // 不相交
+        }
+
+        // 如果相交，判斷p1的位置關係
+        if (d1 == 0) {  // p1在q1q2線段上
+            if (d2 > 0) {
+                return -1;  // p1在線段上且p2在B側，返回-1
+            } else {
+                return 1;   // p1在線段上且p2在A側，返回1
+            }
+        } else if (d1 > 0) {
+            return 1;   // p1在q1q2線段的B側
+        } else {
+            return -1;  // p1在q1q2線段的A側
+        }
+    }
+}
+
+// File existence check function (internal use)
+bool checkFileExists(const std::string& filepath) {
+    try {
+        return std::filesystem::exists(filepath);
+    } catch (const std::filesystem::filesystem_error& ex) {
+        AILOG_ERROR("Filesystem error checking file: " + std::string(ex.what()));
+        return false;
+    } catch (const std::exception& ex) {
+        AILOG_ERROR("Error occurred while checking file existence: " + std::string(ex.what()));
+        return false;
+    }
+}
+
 extern "C" {
     YOLOV11_API void svCreate_ObjectModules(int function, int camera_amount, const char* engine_path1, const char* engine_path2, float conf_threshold, const char* logFilePath) {
         AILogger::init(std::string(logFilePath));
@@ -42,14 +113,30 @@ extern "C" {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
         if (function == functions::YOLO_COLOR) {
+            if (!checkFileExists(std::string(engine_path1))) {
+                AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                return;
+            }
             AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path1));
             YoloWithColor::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
         }
         else if (function == functions::FALL) {
+            if (!checkFileExists(std::string(engine_path1))) {
+                AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
+                return;
+            }
+            if (!checkFileExists(std::string(engine_path2))) {
+                AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
+                return;
+            }
             AILOG_INFO("Initializing Fall Detection model with engine: " + std::string(engine_path1) + " and " + std::string(engine_path2));
             fall::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
         }
         else if (function == functions::CLIMB) {
+            if (!checkFileExists(std::string(engine_path1))) {
+                AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                return;
+            }
             AILOG_INFO("Initializing Climb Detection model with engine: " + std::string(engine_path1));
             climb::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
         }
@@ -272,7 +359,55 @@ extern "C" {
             }
         }
     }
+    YOLOV11_API void svCreate_CrossingLine(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count){
+        if (roi_id == -1) {
+            AILOG_ERROR("ROI ID cannot be -1, please provide a valid ROI ID.");
+            return;
+        }
+        if (point_count != 4){
+            AILOG_ERROR("Crossing Line ROI must have exactly 4 points, received " + std::to_string(point_count) + " points.");
+            return;
+        }
+        if (CrossingLineROI_map.find(camera_id) != CrossingLineROI_map.end()) {
+            if (CrossingLineROI_map[camera_id].find(function_id) != CrossingLineROI_map[camera_id].end()) {
+                if (CrossingLineROI_map[camera_id][function_id].find(roi_id) != CrossingLineROI_map[camera_id][function_id].end()) {
+                    AILOG_WARN("Crossing Line ROI with id " + std::to_string(roi_id) + " already exists, updating.");
+                }
+            }
+        }
+        // 轉換 C 數組為 C++ vector
+        std::vector<cv::Point2f> points;
+        for (int i = 0; i < point_count; ++i) {
+            points.emplace_back(points_x[i], points_y[i]);
+        }
 
+        // 使用前兩個點和後兩個點進行相交運算
+        int in_area_direction = GeometryUtils::doIntersect(points[0], points[1], points[2], points[3]);
+        if (in_area_direction == 0) {
+            AILOG_ERROR("Crossing Line ROI points do not form a valid crossing line.");
+            return;
+        }
+        CrossingLineROI_map[camera_id][function_id][roi_id] = {points, width, height, in_area_direction};
+
+        AILOG_INFO("Created Crossing Line ROI with id " + std::to_string(roi_id) +
+                 ", in_area_direction: " + std::to_string(in_area_direction));
+    }
+
+    YOLOV11_API void svRemove_CrossingLine(int camera_id, int function_id, int roi_id){
+        auto it = CrossingLineROI_map.find(camera_id);
+        if (it != CrossingLineROI_map.end()) {
+            auto it2 = it->second.find(function_id);
+            if (it2 != it->second.end()) {
+                auto it3 = it2->second.find(roi_id);
+                if (it3 != it2->second.end()) {
+                    it2->second.erase(it3);
+                    AILOG_INFO("Removed Crossing Line ROI with id " + std::to_string(roi_id));
+                } else {
+                    AILOG_WARN("Crossing Line ROI with id " + std::to_string(roi_id) + " does not exist.");
+                }
+            }
+        }
+    }
     YOLOV11_API void release() {
         YoloWithColor::stopThread = true;
         YoloWithColor::inputQueueCondition.notify_all(); // 通知執行緒停止等待

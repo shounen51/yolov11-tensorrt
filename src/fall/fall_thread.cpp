@@ -191,7 +191,7 @@ namespace fall {
                 if (det.class_id != model->person_class_id) {
                     continue; // 只處理人類檢測
                 }
-                if (det.bbox.width < 0.05 || det.bbox.height < 0.05) {
+                if (det.bbox.width < 0.05 || det.bbox.height < 0.1) {
                     continue; // 忽略過小的檢測框
                 }
                 // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
@@ -238,6 +238,11 @@ namespace fall {
                             bottom_middle.y >= 0 && bottom_middle.y < roi_ptr->mask.rows &&
                             roi_ptr->mask.at<uchar>(bottom_middle) != 0) {
                             output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
+
+                            if (det.bbox.height >= 3 * det.bbox.width) {
+                                // 高度超過寬度三倍，強制判定為站立
+                                break;
+                            }
                             // 如果在 ROI 內，做跌倒辨識
                             // 確保裁剪座標在圖像邊界內
                             int crop_x1 = std::max(0, static_cast<int>(x1));

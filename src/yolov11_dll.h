@@ -29,8 +29,32 @@ struct MRTRedlightROI {
 };
 extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, MRTRedlightROI>>> MRTRedlightROI_map;
 
+struct CrossingLineROI {
+    std::vector<cv::Point2f> points;
+    int width;
+    int height;
+    int in_area_direction; // 進入區域的方向
+};
+extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, CrossingLineROI>>> CrossingLineROI_map;
 // points is 0~1
 cv::Mat createROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+
+// 線段相交判斷函數
+namespace GeometryUtils {
+    // 計算向量叉積 (p1-p0) × (p2-p0)
+    YOLOV11_API float crossProduct(cv::Point2f p0, cv::Point2f p1, cv::Point2f p2);
+
+    // 檢查點是否在線段上（假設點已經共線）
+    YOLOV11_API bool onSegment(cv::Point2f p, cv::Point2f q, cv::Point2f r);
+
+    // 判斷兩條線段是否相交，並返回p1相對於q1q2線段的位置關係
+    // 線段1: q1-q2, 線段2: p1-p2
+    // 返回值：0=不相交, -1=p1在q1q2的A側, 1=p1在q1q2的B側
+    YOLOV11_API int doIntersect(cv::Point2f q1, cv::Point2f q2, cv::Point2f p1, cv::Point2f p2);
+}
+
+// 內部使用的工具函數
+bool checkFileExists(const char* file_path);
 
 extern "C" {
 
@@ -41,8 +65,11 @@ typedef struct svResultProjectObject_DataType
     float bbox_xmax;
     float bbox_ymax;
     float confidence;
+    int track_id;
     int class_id;
     int in_roi_id;
+    int crossing_line_id; // 用於 Crossing Line ROI 的 ID
+    int crossing_line_direction; // 用於 Crossing Line ROI 的方向
     char color_label_first[16];
     char color_label_second[16];
     char pose[16];
@@ -56,8 +83,11 @@ inline void svObjData_init(svObjData_t* obj) {
     obj->bbox_xmax = 0.0f;
     obj->bbox_ymax = 0.0f;
     obj->confidence = 0.0f;
+    obj->track_id = -1;
     obj->class_id = -1;
     obj->in_roi_id = -1;
+    obj->crossing_line_id = -1; // 初始化 Crossing Line ID
+    obj->crossing_line_direction = 0; // 初始化 Crossing Line 方向
     strncpy(obj->color_label_first, "none", sizeof(obj->color_label_first));
     obj->color_label_first[sizeof(obj->color_label_first) - 1] = '\0';
     strncpy(obj->color_label_second, "none", sizeof(obj->color_label_second));
@@ -115,6 +145,8 @@ YOLOV11_API void svCreate_ROI(int camera_id, int function_id, int roi_id, int wi
 YOLOV11_API void svRemove_ROIandWall(int camera_id, int function_id, int roi_id);
 YOLOV11_API void svCreate_MRTRedlightROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
 YOLOV11_API void svRemove_MRTRedlightROI(int camera_id, int function_id, int roi_id);
+YOLOV11_API void svCreate_CrossingLine(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count);
+YOLOV11_API void svRemove_CrossingLine(int camera_id, int function_id, int roi_id);
 
 /**
  * 清理資源

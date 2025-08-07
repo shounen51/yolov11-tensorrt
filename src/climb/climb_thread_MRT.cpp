@@ -19,43 +19,6 @@ static uint8_t* yuv_buffer_device = nullptr;
 constexpr int INPUT_W = 640;
 constexpr int INPUT_H = 640;
 
-// 線段相交判斷函數
-namespace {
-    // 計算向量叉積 (p1-p0) × (p2-p0)
-    float crossProduct(cv::Point2f p0, cv::Point2f p1, cv::Point2f p2) {
-        return (p1.x - p0.x) * (p2.y - p0.y) - (p1.y - p0.y) * (p2.x - p0.x);
-    }
-
-    // 檢查點是否在線段上（假設點已經共線）
-    bool onSegment(cv::Point2f p, cv::Point2f q, cv::Point2f r) {
-        return (q.x <= std::max(p.x, r.x) && q.x >= std::min(p.x, r.x) &&
-                q.y <= std::max(p.y, r.y) && q.y >= std::min(p.y, r.y));
-    }
-
-    // 判斷兩條線段是否相交
-    // 線段1: p1-q1, 線段2: p2-q2
-    bool doIntersect(cv::Point2f p1, cv::Point2f q1, cv::Point2f p2, cv::Point2f q2) {
-        float d1 = crossProduct(p2, q2, p1);
-        float d2 = crossProduct(p2, q2, q1);
-        float d3 = crossProduct(p1, q1, p2);
-        float d4 = crossProduct(p1, q1, q2);
-
-        // 一般情況：如果兩條線段跨越彼此
-        if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
-            ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
-            return true;
-        }
-
-        // 特殊情況：點共線且重疊
-        if (d1 == 0 && onSegment(p2, p1, q2)) return true;
-        if (d2 == 0 && onSegment(p2, q1, q2)) return true;
-        if (d3 == 0 && onSegment(p1, p2, q1)) return true;
-        if (d4 == 0 && onSegment(p1, q2, q1)) return true;
-
-        return false;
-    }
-}
-
 namespace climb {
     ICudaEngine* engine;
     IExecutionContext* context;
@@ -265,22 +228,6 @@ namespace climb {
             // 將 yuv 轉換成 rgb
             yuv420toRGBInPlace(gpu_yuv_buffer, input.width, input.height, gpu_rgb_buffer, stream);
 
-            // 檢查 MRTRedlightROI 的顏色比例
-            bool should_skip_detection = checkMRTRedlightROI(input.camera_id, gpu_rgb_buffer, input.width, input.height);
-            // 如果顏色比例超過閾值，跳過偵測
-            if (should_skip_detection) {
-                // 將空結果放入 outputQueue
-                svObjData_t* output = new svObjData_t[0];
-                int camera_id = input.camera_id;
-                {
-                    std::lock_guard<std::mutex> lock(*outputQueueMutexes[camera_id]);
-                    outputQueues[camera_id].push({output, 0});
-                }
-                outputQueueConditions[camera_id]->notify_one();
-                AILOG_INFO("Climb detection skipped for camera " + std::to_string(input.camera_id) + " due to MRT redlight detection");
-                continue; // 跳過這一幀的處理
-            }
-
             cuda_preprocess(gpu_rgb_buffer, input.width, input.height,
                             static_cast<float*>(buffers[0]), INPUT_W, INPUT_H, stream);
             context->executeV2(buffers);
@@ -340,6 +287,9 @@ namespace climb {
                 }
             }
 
+            // 檢查 MRTRedlightROI 的顏色比例
+            bool skip_climb_detection = checkMRTRedlightROI(input.camera_id, gpu_rgb_buffer, input.width, input.height);
+
             // 如果 roi_map_ptr 不為空，則取得指針
             ROI* roi_ptr = nullptr;
             if (roi_map_ptr) {
@@ -384,6 +334,10 @@ namespace climb {
                 output[i].confidence = confidences[index];
                 strncpy(output[i].climb, climb_classname[STAND_CLASS].c_str(), sizeof(output[i].climb) - 1);
                 output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字串結尾
+
+                if (skip_climb_detection) {
+                    continue; // 跳過爬牆偵測
+                }
 
                 // 計算 Shoulder 和 Hip 是否位於 bbox 內
                 if (ShoulderX < x1 || ShoulderX > x2 ||
@@ -458,7 +412,8 @@ namespace climb {
                                 cv::Point2f roi_point1 = points[j];
                                 cv::Point2f roi_point2 = points[j + 1];
                                 // 判斷Shoulder-Hip線段是否與當前ROI邊界線段相交
-                                if (doIntersect(shoulder_point, hip_point, roi_point1, roi_point2)) {
+                                int intersection_result = GeometryUtils::doIntersect(roi_point1, roi_point2, shoulder_point, hip_point);
+                                if (intersection_result != 0) {
                                     roi_ptr->alarm[0] = 1; // 設定此 frame 有人爬牆
                                     in_roi = true;
                                     if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {

@@ -19,6 +19,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/ColorClassifier)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/YUV420ToRGB)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/fall)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/climb)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/tracker)
 
 # Set TensorRT path
 set(TENSORRT_DIR "C:/Program Files (x86)/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8")
@@ -37,6 +38,7 @@ set(COMMON_SOURCES
     src/YUV420ToRGB/YUV420ToRGB.cu
     src/fall/fall_thread.cpp
     src/climb/climb_thread_MRT.cpp
+    src/tracker/tracker.cpp
 )
 set(COMMON_HEADERS
     src/yolov11.h
@@ -51,6 +53,7 @@ set(COMMON_HEADERS
     src/YUV420ToRGB/YUV420ToRGB.h
     src/fall/fall_thread.h
     src/climb/climb_thread_MRT.h
+    src/tracker/tracker.h
 )
 
 # === DLL target ===
@@ -85,12 +88,3 @@ set(MAIN_RTSP_SOURCES
 
 add_executable(main_rtsp ${MAIN_RTSP_SOURCES})
 target_link_libraries(main_rtsp yolov11 ${OpenCV_LIBS})
-
-# === Color Test executable ===
-set(MAIN_TEST_SOURCES
-    main_test.cpp
-    src/ColorClassifier/ColorClassifier.cpp
-)
-
-add_executable(main_test ${MAIN_TEST_SOURCES})
-target_link_libraries(main_test ${OpenCV_LIBS})

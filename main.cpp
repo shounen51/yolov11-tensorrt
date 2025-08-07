@@ -5,6 +5,7 @@
 #include <thread>
 #include <chrono>
 #include <atomic>
+#include <iomanip>
 
 using namespace std;
 using namespace cv;
@@ -48,7 +49,7 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
     uint8_t* yuv_data = nullptr;
 
     // Processing loop
-    while (!should_stop) {
+    while (!should_stop && camera_amount > 0) {
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -62,8 +63,9 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
 
         auto loop_start = chrono::high_resolution_clock::now();
         // API 3: Process yuv image for all cameras
+        int q_size = 0;
         for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
-            int q_size = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            q_size = svObjectModules_inputImageYUV(functions::YOLO_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
             if (q_size < 1) {
                 cerr << "[YOLO] Failed to process image for camera " << camera_id << endl;
                 break;
@@ -80,9 +82,11 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
             }
         }
         auto loop_end = chrono::high_resolution_clock::now();
-        auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_fps = (1000 / inference_time) * camera_amount;
-        cout << "[YOLO] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
+        auto inference_time = chrono::duration_cast<chrono::microseconds>(loop_end - loop_start).count();
+        double actual_fps = (1000000.0 / inference_time) * camera_amount;
+        double per_camera_fps = 1000000.0 / inference_time;
+        cout << "[YOLO] Inference time: " << inference_time << " us, Actual FPS: " << fixed << setprecision(1) << actual_fps
+             << " (per camera: " << per_camera_fps << endl;
     }
 
     // Cleanup
@@ -129,7 +133,7 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
     uint8_t* yuv_data = nullptr;
 
     // Processing loop
-    while (!should_stop) {
+    while (!should_stop && camera_amount > 0) {
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -162,8 +166,10 @@ void fall_thread(const char* engine_path1, const char* engine_path2, const char*
         }
         auto loop_end = chrono::high_resolution_clock::now();
         auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_fps = (1000 / inference_time) * camera_amount;
-        cout << "[FALL] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
+        double actual_fps = (1000.0 / inference_time) * camera_amount;
+        double per_camera_fps = 1000.0 / inference_time;
+        cout << "[FALL] Inference time: " << inference_time << " ms, Actual FPS: " << fixed << setprecision(1) << actual_fps
+             << " (per camera: " << per_camera_fps << ")" << endl;
     }
 
     // Cleanup
@@ -209,7 +215,7 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     uint8_t* yuv_data = nullptr;
 
     // Processing loop
-    while (!should_stop) {
+    while (!should_stop && camera_amount > 0) {
         // Read frame from video
         if (!cap.read(frame_bgr)) {
             // End of video, restart from beginning
@@ -242,8 +248,10 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
         }
         auto loop_end = chrono::high_resolution_clock::now();
         auto inference_time = chrono::duration_cast<chrono::milliseconds>(loop_end - loop_start).count();
-        int actual_fps = (1000 / inference_time) * camera_amount;
-        cout << "[CLIMB] Inference time: " << inference_time << " ms, Actual FPS: " << actual_fps << " (per camera: " << (1000 / inference_time) << ")" << endl;
+        double actual_fps = (1000.0 / inference_time) * camera_amount;
+        double per_camera_fps = 1000.0 / inference_time;
+        cout << "[CLIMB] Inference time: " << inference_time << " ms, Actual FPS: " << fixed << setprecision(1) << actual_fps
+             << " (per camera: " << per_camera_fps << ")" << endl;
     }
 
     // Cleanup
@@ -258,7 +266,7 @@ int main() {
     const char* yolo_engine_path1 = "wheelchair_m_1.3.0.engine";
     const char* yolo_engine_path2 = "wheelchair_m_1.3.0.engine";
     const char* fall_engine_path1 = "wheelchair_m_1.3.0.engine";
-    const char* fall_engine_path2 = "yolo-fall4-cls.engine";
+    const char* fall_engine_path2 = "yolo-fall4-cls_1.3.engine";
     const char* climb_engine_path1 = "yolo11x-pose.engine";
     const char* climb_engine_path2 = "yolo11x-pose.engine";
     const char* yolo_video_path = "yolo.mp4";
@@ -267,14 +275,14 @@ int main() {
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread
-    int yolo_fps = 2;
+    int yolo_fps = 5;
     int fall_fps = 5;
     int climb_fps = 10;
 
     // Camera amount settings
-    int yolo_camera_amount = 10;  // Process cameras 0, 1, 2
-    int fall_camera_amount = 5;  // Process cameras 0, 1, 2
-    int climb_camera_amount = 4;  // Process cameras 0, 1, 2
+    int yolo_camera_amount = 1;  // Process cameras 0, 1, 2
+    int fall_camera_amount = 0;  // Process cameras 0, 1, 2
+    int climb_camera_amount = 0;  // Process cameras 0, 1, 2
 
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;
