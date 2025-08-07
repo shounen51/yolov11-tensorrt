@@ -77,9 +77,9 @@ namespace GeometryUtils {
         // 如果相交，判斷p1的位置關係
         if (d1 == 0) {  // p1在q1q2線段上
             if (d2 > 0) {
-                return -1;  // p1在線段上且p2在B側，返回-1
+                return 0;  // p1在線段上且p2在B側，返回0
             } else {
-                return 1;   // p1在線段上且p2在A側，返回1
+                return 0;   // p1在線段上且p2在A側，返回0
             }
         } else if (d1 > 0) {
             return 1;   // p1在q1q2線段的B側

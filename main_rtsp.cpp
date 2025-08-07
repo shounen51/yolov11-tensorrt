@@ -546,9 +546,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         // 在目標中心畫一個追蹤點 - 使用上半部框的中心作為參考點
         if (obj.track_id != -1) {
             int center_x = (x1 + x2) / 2;
-            // 將參考點改為上半部框的中心 (y座標向上移動1/4)
+            // 將參考點改為上半部框的中心 (y座標向下移動1/8)
             int bbox_height = y2 - y1;
-            int center_y = y1 + bbox_height / 4;
+            int center_y = y1 + bbox_height / 8;
             circle(frame, Point(center_x, center_y), 3, Scalar(255, 255, 0), -1);
         }
     }

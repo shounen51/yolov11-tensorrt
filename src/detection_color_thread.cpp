@@ -245,9 +245,9 @@ namespace YoloWithColor {
                         // 只對人類進行追蹤
                         if (output[i].class_id == model->person_class_id) {
                             float center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
-                            // 將參考點改為上半部框的中心 (y座標向上移動1/4)
+                            // 將參考點改為上半部框的中心 (y座標向上移動1/8)
                             float bbox_height = output[i].bbox_ymax - output[i].bbox_ymin;
-                            float center_y = output[i].bbox_ymin + bbox_height * 0.25f;
+                            float center_y = output[i].bbox_ymin + bbox_height * 0.125f;
                             float width = output[i].bbox_xmax - output[i].bbox_xmin;
                             float height = output[i].bbox_ymax - output[i].bbox_ymin;
 
@@ -265,9 +265,9 @@ namespace YoloWithColor {
                         // 只對人類檢測分配追蹤ID
                         if (output[i].class_id == model->person_class_id) {
                             float det_center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
-                            // 使用相同的參考點：上半部框的中心 (y座標向上移動1/4)
+                            // 使用相同的參考點：上半部框的中心 (y座標向上移動1/8)
                             float bbox_height = output[i].bbox_ymax - output[i].bbox_ymin;
-                            float det_center_y = output[i].bbox_ymin + bbox_height * 0.25f;
+                            float det_center_y = output[i].bbox_ymin + bbox_height * 0.125f;
 
                             // 找到最接近的追蹤目標
                             float min_distance = std::numeric_limits<float>::max();
@@ -295,7 +295,7 @@ namespace YoloWithColor {
                                     //           std::to_string(prev_detection.height) + ")");
 
                                     // 計算前一幀的底邊中心 (p1)
-                                    float prev_bottom_y = prev_detection.y + prev_detection.height * 0.75f;  // 從上1/4位置到底邊
+                                    float prev_bottom_y = prev_detection.y + prev_detection.height * 0.875f;  // 從上1/8位置到底邊
                                     cv::Point2f p1(prev_detection.x, prev_bottom_y);
 
                                     // 計算當前幀的底邊中心 (p2)
