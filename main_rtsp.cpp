@@ -481,7 +481,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     for (int i = 0; i < num_objects; i++) {
         const auto& obj = results[i];
-
+        if (obj.class_id != 0) continue; // Skip non-person objects
         // 将归一化坐标 (0~1) 转换为像素坐标
         int x1 = static_cast<int>(obj.bbox_xmin * frame_width);
         int y1 = static_cast<int>(obj.bbox_ymin * frame_height);
@@ -791,10 +791,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         total_red_box_count += red_box_count;
 
         // Display cumulative red box count in red text
-        if (total_red_box_count > 0) {
-            string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
-            putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
-        }
+        string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
+        putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
+
 
         // Display current frame red box count if any
         if (red_box_count > 0) {
