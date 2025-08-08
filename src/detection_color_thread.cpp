@@ -49,7 +49,7 @@ namespace YoloWithColor {
             outputQueues.emplace_back();
             outputQueueMutexes.emplace_back(std::make_unique<std::mutex>());
             outputQueueConditions.emplace_back(std::make_unique<std::condition_variable>());
-            trackers.emplace_back(std::make_unique<ObjectTracker>(5, 0.2f)); // max_skip_frames=5, max_distance_threshold=0.3
+            trackers.emplace_back(std::make_unique<ObjectTracker>(5, 0.1f)); // max_skip_frames=5, max_distance_threshold=0.3
         }
 
         // 啟動執行緒執行 inference_thread
@@ -275,10 +275,6 @@ namespace YoloWithColor {
                                 output[i].track_id = track_id;
 
                                 if (track_id != -1) {
-                                    AILOG_DEBUG("Detection " + std::to_string(i) +
-                                              " assigned track ID " + std::to_string(track_id) +
-                                              " (direct mapping from Hungarian algorithm)");
-
                                     // 處理crossing line檢測
                                     auto prev_detection = trackers[input.camera_id]->getPreviousDetection(track_id);
                                     if (prev_detection.valid) {
@@ -291,31 +287,25 @@ namespace YoloWithColor {
                                         float curr_bottom_y = output[i].bbox_ymax;
                                         cv::Point2f p2(curr_center_x, curr_bottom_y);
 
-                                        AILOG_DEBUG("Track ID " + std::to_string(track_id) +
-                                                  " previous XY: (" +
-                                                  std::to_string(prev_detection.x) + ", " +
-                                                  std::to_string(prev_bottom_y) + ")" +
-                                                  " current XY: (" +
-                                                  std::to_string(curr_center_x) + ", " +
-                                                  std::to_string(curr_bottom_y) + ")");
-
                                         for (const auto& [roi_id, roi] : crossing_line_map) {
-                                            cv::Point2f q1 = roi.points[0];
-                                            cv::Point2f q2 = roi.points[1];
-                                            int dir = GeometryUtils::doIntersect(q1, q2, p1, p2);
-                                            if (dir != 0) {
-                                                output[i].crossing_line_id = roi_id;
-                                                output[i].crossing_line_direction = (dir == roi.in_area_direction) ? 1 : -1;
-                                                AILOG_INFO("Track ID " + std::to_string(track_id) +
-                                                          " crossed line in " + std::to_string(roi_id) +
-                                                          ", direction: " + std::to_string(output[i].crossing_line_direction));
+                                            // 遍歷所有線段 (point_count - 1 個線段)
+                                            for (int segment_idx = 0; segment_idx < roi.points.size() - 1; ++segment_idx) {
+                                                cv::Point2f q1 = roi.points[segment_idx];
+                                                cv::Point2f q2 = roi.points[segment_idx + 1];
+                                                int dir = GeometryUtils::doIntersect(q1, q2, p1, p2);
+                                                if (dir != 0) {
+                                                    output[i].crossing_line_id = roi_id;
+                                                    output[i].crossing_line_direction = (dir == roi.in_area_direction[segment_idx]) ? 1 : -1;
+                                                    AILOG_INFO("Track ID " + std::to_string(track_id) +
+                                                              " crossed line segment " + std::to_string(segment_idx) +
+                                                              " in ROI " + std::to_string(roi_id) +
+                                                              ", direction: " + std::to_string(output[i].crossing_line_direction));
+                                                    break; // 找到相交線段後跳出內層循環
+                                                }
                                             }
                                         }
                                     }
-                                } else {
-                                    AILOG_DEBUG("Detection " + std::to_string(i) + " has no track assignment");
                                 }
-
                                 tracker_detection_index++; // 移動到下一個tracker_detection
                             }
                         }
@@ -331,8 +321,6 @@ namespace YoloWithColor {
                     }
                 }
             } else {
-                AILOG_DEBUG("No crossing line set in camera: " + std::to_string(input.camera_id) + ", skipping tracking");
-                // 如果沒有追蹤器，給所有檢測設置無效的追蹤ID
                 for (int i = 0; i < count; ++i) {
                     output[i].track_id = -1;
                 }

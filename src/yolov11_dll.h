@@ -33,7 +33,7 @@ struct CrossingLineROI {
     std::vector<cv::Point2f> points;
     int width;
     int height;
-    int in_area_direction; // 進入區域的方向
+    std::vector<int> in_area_direction; // 進入區域的方向
 };
 extern std::unordered_map<int, std::unordered_map<int, std::unordered_map<int, CrossingLineROI>>> CrossingLineROI_map;
 // points is 0~1

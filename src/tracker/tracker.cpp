@@ -122,9 +122,9 @@ ObjectTracker::ObjectTracker(int max_skip_frames, float max_dist_threshold)
 }
 
 TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detections) {
-    std::cout << "\n=== TRACKER UPDATE START ===" << std::endl;
-    std::cout << "Current tracked objects: " << tracked_objects.size() << std::endl;
-    std::cout << "New detections: " << detections.size() << std::endl;
+    // std::cout << "\n=== TRACKER UPDATE START ===" << std::endl;
+    // std::cout << "Current tracked objects: " << tracked_objects.size() << std::endl;
+    // std::cout << "New detections: " << detections.size() << std::endl;
 
     TrackingResult result;
     result.detection_to_track_id.resize(detections.size(), -1);  // 初始化為-1（無匹配）
@@ -133,15 +133,15 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
     // 打印當前所有軌跡狀態
     for (const auto& pair : tracked_objects) {
         auto pos = pair.second->getPredictedPosition();
-        std::cout << "Track ID " << pair.first
-                  << " at (" << std::fixed << std::setprecision(3) << pos.x << ", " << pos.y << ")"
-                  << " frames_since_update: " << pair.second->frames_since_update << std::endl;
+        // std::cout << "Track ID " << pair.first
+        //           << " at (" << std::fixed << std::setprecision(3) << pos.x << ", " << pos.y << ")"
+        //           << " frames_since_update: " << pair.second->frames_since_update << std::endl;
     }
 
     // 打印檢測位置
     for (size_t i = 0; i < detections.size(); i++) {
-        std::cout << "Detection " << i
-                  << " at (" << std::fixed << std::setprecision(3) << detections[i].x << ", " << detections[i].y << ")" << std::endl;
+        // std::cout << "Detection " << i
+        //           << " at (" << std::fixed << std::setprecision(3) << detections[i].x << ", " << detections[i].y << ")" << std::endl;
     }
 
     // 1. 對所有現有軌跡進行預測
@@ -151,39 +151,39 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
 
     // 如果沒有現有軌跡，為所有檢測創建新軌跡
     if (tracked_objects.empty()) {
-        std::cout << "No existing tracks, creating new tracks for all detections" << std::endl;
+        // std::cout << "No existing tracks, creating new tracks for all detections" << std::endl;
         for (size_t i = 0; i < detections.size(); i++) {
             const auto& det = detections[i];
             tracked_objects[next_id] = std::make_unique<TrackedObject>(
                 next_id, det.x, det.y, det.class_id, det.confidence);
             result.detection_to_track_id[i] = next_id;
             result.new_track_ids.push_back(next_id);
-            std::cout << "Created new track ID " << next_id
-                      << " for detection " << i
-                      << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
+            // std::cout << "Created new track ID " << next_id
+            //           << " for detection " << i
+            //           << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
             next_id++;
         }
     }
     // 如果有軌跡但沒有檢測，處理軌跡過期
     else if (detections.empty()) {
-        std::cout << "No detections, checking for expired tracks" << std::endl;
+        // std::cout << "No detections, checking for expired tracks" << std::endl;
         std::vector<int> tracks_to_remove;
         for (const auto& pair : tracked_objects) {
             auto& track = pair.second;
             if (track->frames_since_update >= max_frames_to_skip || track->isOutOfBounds()) {
                 tracks_to_remove.push_back(pair.first);
-                std::cout << "Track ID " << pair.first << " will be removed (frames_since_update: "
-                          << track->frames_since_update << ", out_of_bounds: " << track->isOutOfBounds() << ")" << std::endl;
+                // std::cout << "Track ID " << pair.first << " will be removed (frames_since_update: "
+                //           << track->frames_since_update << ", out_of_bounds: " << track->isOutOfBounds() << ")" << std::endl;
             }
         }
         for (int track_id : tracks_to_remove) {
             tracked_objects.erase(track_id);
-            std::cout << "Removed track ID " << track_id << std::endl;
+            // std::cout << "Removed track ID " << track_id << std::endl;
         }
     }
     // 使用匈牙利演算法進行配對
     else {
-        std::cout << "Using Hungarian algorithm for assignment" << std::endl;
+        // std::cout << "Using Hungarian algorithm for assignment" << std::endl;
         std::vector<int> track_ids;
         for (const auto& pair : tracked_objects) {
             track_ids.push_back(pair.first);
@@ -193,26 +193,26 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
         auto cost_matrix = computeCostMatrix(detections, track_ids);
 
         // 打印成本矩陣
-        std::cout << "Cost Matrix:" << std::endl;
+        // std::cout << "Cost Matrix:" << std::endl;
         for (size_t i = 0; i < cost_matrix.size(); i++) {
-            std::cout << "Track " << track_ids[i] << ": ";
+            // std::cout << "Track " << track_ids[i] << ": ";
             for (size_t j = 0; j < cost_matrix[i].size(); j++) {
-                if (cost_matrix[i][j] == std::numeric_limits<float>::max()) {
-                    std::cout << "INF ";
-                } else {
-                    std::cout << std::fixed << std::setprecision(3) << cost_matrix[i][j] << " ";
-                }
+                // if (cost_matrix[i][j] == std::numeric_limits<float>::max()) {
+                //     std::cout << "INF ";
+                // } else {
+                //     std::cout << std::fixed << std::setprecision(3) << cost_matrix[i][j] << " ";
+                // }
             }
-            std::cout << std::endl;
+            // std::cout << std::endl;
         }
 
         // 使用匈牙利演算法進行最優配對
         auto assignments = hungarianAssignment(cost_matrix);
 
-        std::cout << "Hungarian assignments (" << assignments.size() << " pairs):" << std::endl;
+        // std::cout << "Hungarian assignments (" << assignments.size() << " pairs):" << std::endl;
         for (const auto& assignment : assignments) {
-            std::cout << "Track index " << assignment.first << " (ID " << track_ids[assignment.first]
-                      << ") -> Detection " << assignment.second << std::endl;
+            // std::cout << "Track index " << assignment.first << " (ID " << track_ids[assignment.first]
+            //           << ") -> Detection " << assignment.second << std::endl;
         }
 
         // 記錄哪些檢測和軌跡已被匹配
@@ -232,19 +232,19 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
                 auto predicted_pos = tracked_objects[track_id]->getPredictedPosition();
                 float distance = euclideanDistance(predicted_pos.x, predicted_pos.y, det.x, det.y);
 
-                std::cout << "Checking assignment: Track ID " << track_id
-                          << " predicted at (" << std::fixed << std::setprecision(3) << predicted_pos.x << ", " << predicted_pos.y << ")"
-                          << " vs Detection " << det_idx << " at (" << det.x << ", " << det.y << ")"
-                          << " distance: " << distance << " threshold: " << max_distance_threshold << std::endl;
+                // std::cout << "Checking assignment: Track ID " << track_id
+                //           << " predicted at (" << std::fixed << std::setprecision(3) << predicted_pos.x << ", " << predicted_pos.y << ")"
+                //           << " vs Detection " << det_idx << " at (" << det.x << ", " << det.y << ")"
+                //           << " distance: " << distance << " threshold: " << max_distance_threshold << std::endl;
 
                 if (distance <= max_distance_threshold) {
                     tracked_objects[track_id]->update(det.x, det.y, det.width, det.height, det.confidence);
                     detection_matched[det_idx] = true;
                     track_matched[track_idx] = true;
                     result.detection_to_track_id[det_idx] = track_id;  // 關鍵：直接映射檢測索引到track_id
-                    std::cout << "✓ Track ID " << track_id << " updated with detection " << det_idx << std::endl;
+                    // std::cout << "✓ Track ID " << track_id << " updated with detection " << det_idx << std::endl;
                 } else {
-                    std::cout << "✗ Track ID " << track_id << " rejected (distance too large)" << std::endl;
+                    // std::cout << "✗ Track ID " << track_id << " rejected (distance too large)" << std::endl;
                 }
             }
         }
@@ -256,14 +256,14 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
                 int track_id = track_ids[i];
                 auto& track = tracked_objects[track_id];
 
-                std::cout << "Unmatched track ID " << track_id
-                          << " frames_since_update: " << track->frames_since_update
-                          << " out_of_bounds: " << track->isOutOfBounds() << std::endl;
+                // std::cout << "Unmatched track ID " << track_id
+                //           << " frames_since_update: " << track->frames_since_update
+                //           << " out_of_bounds: " << track->isOutOfBounds() << std::endl;
 
                 // 檢查是否應該刪除軌跡
                 if (track->frames_since_update >= max_frames_to_skip || track->isOutOfBounds()) {
                     tracks_to_remove.push_back(track_id);
-                    std::cout << "Track ID " << track_id << " will be removed" << std::endl;
+                    // std::cout << "Track ID " << track_id << " will be removed" << std::endl;
                 }
             }
         }
@@ -271,7 +271,7 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
         // 刪除過期的軌跡
         for (int track_id : tracks_to_remove) {
             tracked_objects.erase(track_id);
-            std::cout << "Removed track ID " << track_id << std::endl;
+            // std::cout << "Removed track ID " << track_id << std::endl;
         }
 
         // 為未配對的檢測創建新軌跡
@@ -282,9 +282,9 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
                     next_id, det.x, det.y, det.class_id, det.confidence);
                 result.detection_to_track_id[i] = next_id;
                 result.new_track_ids.push_back(next_id);
-                std::cout << "Created new track ID " << next_id
-                          << " for unmatched detection " << i
-                          << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
+                // std::cout << "Created new track ID " << next_id
+                //           << " for unmatched detection " << i
+                //           << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
                 next_id++;
             }
         }
@@ -292,16 +292,16 @@ TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detect
 
     result.total_active_tracks = tracked_objects.size();
 
-    std::cout << "Final mapping result:" << std::endl;
+    // std::cout << "Final mapping result:" << std::endl;
     for (size_t i = 0; i < result.detection_to_track_id.size(); i++) {
-        if (result.detection_to_track_id[i] != -1) {
-            std::cout << "  Detection " << i << " -> Track ID " << result.detection_to_track_id[i] << std::endl;
-        } else {
-            std::cout << "  Detection " << i << " -> NO TRACK" << std::endl;
-        }
+        // if (result.detection_to_track_id[i] != -1) {
+        //     std::cout << "  Detection " << i << " -> Track ID " << result.detection_to_track_id[i] << std::endl;
+        // } else {
+        //     std::cout << "  Detection " << i << " -> NO TRACK" << std::endl;
+        // }
     }
-    std::cout << "Total active tracks: " << result.total_active_tracks << std::endl;
-    std::cout << "=== TRACKER UPDATE END ===\n" << std::endl;
+    // std::cout << "Total active tracks: " << result.total_active_tracks << std::endl;
+    // std::cout << "=== TRACKER UPDATE END ===\n" << std::endl;
 
     return result;
 }
@@ -343,14 +343,14 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
     const std::vector<std::vector<float>>& cost_matrix) {
 
     if (cost_matrix.empty() || cost_matrix[0].empty()) {
-        std::cout << "Empty cost matrix, returning empty assignments" << std::endl;
+        // std::cout << "Empty cost matrix, returning empty assignments" << std::endl;
         return {};
     }
 
     int n = cost_matrix.size();    // 軌跡數量
     int m = cost_matrix[0].size(); // 檢測數量
 
-    std::cout << "Hungarian algorithm: " << n << " tracks, " << m << " detections" << std::endl;
+    // std::cout << "Hungarian algorithm: " << n << " tracks, " << m << " detections" << std::endl;
 
     // 確保是方形矩陣，匈牙利演算法需要方形矩陣
     int size = std::max(n, m);
@@ -367,12 +367,12 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
         }
     }
 
-    std::cout << "Converted matrix:" << std::endl;
+    // std::cout << "Converted matrix:" << std::endl;
     for (int i = 0; i < std::min(n, 5); i++) {
         for (int j = 0; j < std::min(m, 5); j++) {
-            std::cout << std::fixed << std::setprecision(3) << matrix[i][j] << " ";
+            // std::cout << std::fixed << std::setprecision(3) << matrix[i][j] << " ";
         }
-        std::cout << std::endl;
+        // std::cout << std::endl;
     }
 
     // 匈牙利演算法變量
@@ -408,20 +408,20 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
     }
     // 列標籤初始化為0
 
-    std::cout << "Max cost: " << max_cost << std::endl;
-    std::cout << "Converted to max weight matrix (first 3x3):" << std::endl;
+    // std::cout << "Max cost: " << max_cost << std::endl;
+    // std::cout << "Converted to max weight matrix (first 3x3):" << std::endl;
     for (int i = 0; i < std::min(size, 3); i++) {
         for (int j = 0; j < std::min(size, 3); j++) {
-            std::cout << std::fixed << std::setprecision(3) << matrix[i][j] << " ";
+            // std::cout << std::fixed << std::setprecision(3) << matrix[i][j] << " ";
         }
-        std::cout << std::endl;
+        // std::cout << std::endl;
     }
 
-    std::cout << "Initial labels - lx: ";
+    // std::cout << "Initial labels - lx: ";
     for (int i = 0; i < std::min(size, 5); i++) {
-        std::cout << std::fixed << std::setprecision(3) << lx[i] << " ";
+        // std::cout << std::fixed << std::setprecision(3) << lx[i] << " ";
     }
-    std::cout << std::endl;
+    // std::cout << std::endl;
 
     // 主循環：為每個軌跡找匹配
     for (int i = 0; i < size; i++) {
@@ -431,7 +431,7 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
         while (true) {
             std::vector<bool> used_y(size, false);
             if (findAugmentingPath(i, matrix, match_x, match_y, used_y, slack_y, slack_x, lx, ly)) {
-                std::cout << "Found augmenting path for track " << i << std::endl;
+                // std::cout << "Found augmenting path for track " << i << std::endl;
                 break;
             }
 
@@ -443,11 +443,11 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
                 }
             }
 
-            std::cout << "Delta for track " << i << ": " << std::fixed << std::setprecision(6) << delta << std::endl;
+            // std::cout << "Delta for track " << i << ": " << std::fixed << std::setprecision(6) << delta << std::endl;
 
             // 如果找不到有效的 delta，跳出
             if (delta == std::numeric_limits<float>::max() || delta <= 1e-9) {
-                std::cout << "No valid delta found, breaking" << std::endl;
+                // std::cout << "No valid delta found, breaking" << std::endl;
                 break;
             }
 
@@ -465,20 +465,20 @@ std::vector<std::pair<int, int>> ObjectTracker::hungarianAssignment(
 
     // 構建結果，只返回有效的配對
     std::vector<std::pair<int, int>> assignments;
-    std::cout << "Hungarian result matches:" << std::endl;
+    // std::cout << "Hungarian result matches:" << std::endl;
     for (int i = 0; i < n; i++) {
         if (match_x[i] != -1 && match_x[i] < m) {
             // 檢查原始成本矩陣中的值是否有效
             if (cost_matrix[i][match_x[i]] != std::numeric_limits<float>::max()) {
                 assignments.emplace_back(i, match_x[i]);
-                std::cout << "  Track index " << i << " -> Detection " << match_x[i]
-                          << " (cost: " << std::fixed << std::setprecision(3) << cost_matrix[i][match_x[i]] << ")" << std::endl;
+                // std::cout << "  Track index " << i << " -> Detection " << match_x[i]
+                //           << " (cost: " << std::fixed << std::setprecision(3) << cost_matrix[i][match_x[i]] << ")" << std::endl;
             } else {
-                std::cout << "  Track index " << i << " -> Detection " << match_x[i]
-                          << " (REJECTED: infinite cost)" << std::endl;
+                // std::cout << "  Track index " << i << " -> Detection " << match_x[i]
+                //           << " (REJECTED: infinite cost)" << std::endl;
             }
         } else {
-            std::cout << "  Track index " << i << " -> NO MATCH" << std::endl;
+            // std::cout << "  Track index " << i << " -> NO MATCH" << std::endl;
         }
     }
 

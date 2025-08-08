@@ -359,13 +359,14 @@ extern "C" {
             }
         }
     }
-    YOLOV11_API void svCreate_CrossingLine(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count){
+    YOLOV11_API void svCreate_CrossingLine(int camera_id, int function_id, int roi_id,
+            int width, int height, float* points_x, float* points_y, int point_count){
         if (roi_id == -1) {
             AILOG_ERROR("ROI ID cannot be -1, please provide a valid ROI ID.");
             return;
         }
-        if (point_count != 4){
-            AILOG_ERROR("Crossing Line ROI must have exactly 4 points, received " + std::to_string(point_count) + " points.");
+        if (point_count < 2){
+            AILOG_ERROR("Crossing Line ROI must have at least 2 points, received " + std::to_string(point_count) + " points.");
             return;
         }
         if (CrossingLineROI_map.find(camera_id) != CrossingLineROI_map.end()) {
@@ -381,16 +382,33 @@ extern "C" {
             points.emplace_back(points_x[i], points_y[i]);
         }
 
-        // 使用前兩個點和後兩個點進行相交運算
-        int in_area_direction = GeometryUtils::doIntersect(points[0], points[1], points[2], points[3]);
-        if (in_area_direction == 0) {
-            AILOG_ERROR("Crossing Line ROI points do not form a valid crossing line.");
-            return;
+        // 計算每個線段的方向
+        std::vector<int> in_area_direction;
+        for (int i = 0; i < point_count - 1; ++i) {
+            cv::Point2f q1 = points[i];
+            cv::Point2f q2 = points[i + 1];
+
+            // 計算q1和q2的中心點
+            cv::Point2f center = cv::Point2f((q1.x + q2.x) / 2.0f, (q1.y + q2.y) / 2.0f);
+
+            // 計算線段q1q2的方向向量
+            cv::Point2f direction = cv::Point2f(q2.x - q1.x, q2.y - q1.y);
+
+            // 將方向向量逆時針旋轉90度：(x, y) -> (-y, x)
+            cv::Point2f perpendicular = cv::Point2f(-direction.y, direction.x);
+
+            // 創建測試線段p1p2，從中心點延伸
+            cv::Point2f p1 = cv::Point2f(center.x - perpendicular.x, center.y - perpendicular.y);
+            cv::Point2f p2 = cv::Point2f(center.x + perpendicular.x, center.y + perpendicular.y);
+
+            // 呼叫doIntersect得到方向
+            int direction_result = GeometryUtils::doIntersect(q1, q2, p1, p2);
+            in_area_direction.push_back(direction_result);
         }
+
         CrossingLineROI_map[camera_id][function_id][roi_id] = {points, width, height, in_area_direction};
 
-        AILOG_INFO("Created Crossing Line ROI with id " + std::to_string(roi_id) +
-                 ", in_area_direction: " + std::to_string(in_area_direction));
+        AILOG_INFO("Created Crossing Line ROI with id " + std::to_string(roi_id));
     }
 
     YOLOV11_API void svRemove_CrossingLine(int camera_id, int function_id, int roi_id){

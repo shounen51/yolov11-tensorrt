@@ -64,6 +64,11 @@ set(DLL_SOURCES
 add_library(yolov11 SHARED ${DLL_SOURCES} ${COMMON_SOURCES} ${COMMON_HEADERS})
 target_compile_definitions(yolov11 PRIVATE YOLOV11_EXPORTS)
 
+# 添加版本資源文件 (僅在 Windows 上)
+if(WIN32)
+    target_sources(yolov11 PRIVATE src/version.rc)
+endif()
+
 target_link_libraries(yolov11
     ${OpenCV_LIBS}
     ${CUDA_LIBRARIES}

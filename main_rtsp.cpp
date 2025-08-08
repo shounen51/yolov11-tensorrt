@@ -32,9 +32,9 @@ int next_redlight_roi_id = 0;  // For assigning redlight ROI IDs
 vector<vector<Point2f>> created_redlight_rois;  // Store all created redlight ROI polygons
 
 // Crossing line variables
-vector<Point2f> crossingline_clicked_points;  // Store crossing line points (max 4)
+vector<Point2f> crossingline_clicked_points;  // Store crossing line points (no limit)
 bool crossingline_created = false;
-vector<Point2f> created_crossing_line;  // Store the created crossing line points (4 points)
+vector<Point2f> created_crossing_line;  // Store the created crossing line points
 
 // Video orientation correction variables
 bool video_needs_rotation = false;
@@ -105,14 +105,10 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                  << " at pixel(" << x << ", " << y << ") = normalized("
                  << new_point.x << ", " << new_point.y << ")" << endl;
         } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
-            if (crossingline_clicked_points.size() < 4) {  // Maximum 4 points for crossing line
-                crossingline_clicked_points.push_back(new_point);
-                cout << "[MOUSE] Crossing Line - Added point " << crossingline_clicked_points.size()
-                     << " at pixel(" << x << ", " << y << ") = normalized("
-                     << new_point.x << ", " << new_point.y << ")" << endl;
-            } else {
-                cout << "[MOUSE] Crossing Line - Maximum 4 points allowed" << endl;
-            }
+            crossingline_clicked_points.push_back(new_point);
+            cout << "[MOUSE] Crossing Line - Added point " << crossingline_clicked_points.size()
+                 << " at pixel(" << x << ", " << y << ") = normalized("
+                 << new_point.x << ", " << new_point.y << ")" << endl;
         }
 
         point_clicked = true;
@@ -178,7 +174,7 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                      << redlight_clicked_points.size() << ")" << endl;
             }
         } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
-            if (crossingline_clicked_points.size() == 4) {  // Need exactly 4 points for crossing line
+            if (crossingline_clicked_points.size() >= 2) {  // Need at least 2 points for crossing line
                 // Remove existing crossing line
                 svRemove_CrossingLine(current_camera_id, current_function, 0);
                 cout << "[MOUSE] Crossing Line - Removed existing crossing line" << endl;
@@ -193,9 +189,9 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                 // Create new crossing line
                 svCreate_CrossingLine(current_camera_id, current_function, 0,
                                     frame_width_global, frame_height_global,
-                                    points_x.data(), points_y.data(), 4);
+                                    points_x.data(), points_y.data(), static_cast<int>(crossingline_clicked_points.size()));
 
-                cout << "[MOUSE] Crossing Line - Created new crossing line with 4 points" << endl;
+                cout << "[MOUSE] Crossing Line - Created new crossing line with " << crossingline_clicked_points.size() << " points" << endl;
 
                 // Save the created crossing line for display
                 created_crossing_line = crossingline_clicked_points;
@@ -204,7 +200,7 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
                 // Clear points after creating crossing line
                 crossingline_clicked_points.clear();
             } else {
-                cout << "[MOUSE] Crossing Line - Need exactly 4 points to create crossing line (current: "
+                cout << "[MOUSE] Crossing Line - Need at least 2 points to create crossing line (current: "
                      << crossingline_clicked_points.size() << ")" << endl;
             }
         }
@@ -401,7 +397,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     }
 
     // Draw created crossing line (always show if exists)
-    if (crossingline_created && created_crossing_line.size() == 4) {
+    if (crossingline_created && created_crossing_line.size() >= 2) {
         // Convert normalized coordinates to pixel coordinates
         vector<Point> pixel_points;
         for (const auto& pt : created_crossing_line) {
@@ -410,14 +406,21 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             pixel_points.push_back(Point(x, y));
         }
 
-        // Draw first line segment (points 0-1) in cyan
-        line(frame, pixel_points[0], pixel_points[1], Scalar(255, 255, 0), 3);
-        // Draw second line segment (points 2-3) in yellow
-        line(frame, pixel_points[2], pixel_points[3], Scalar(0, 255, 255), 3);
+        // Draw line segments between consecutive points
+        for (size_t i = 0; i < pixel_points.size() - 1; i++) {
+            // Use different colors for different segments (cycling through colors)
+            Scalar segment_color;
+            switch (i % 3) {
+                case 0: segment_color = Scalar(255, 255, 0); break;  // Cyan
+                case 1: segment_color = Scalar(0, 255, 255); break;  // Yellow
+                case 2: segment_color = Scalar(255, 0, 255); break;  // Magenta
+            }
+            line(frame, pixel_points[i], pixel_points[i + 1], segment_color, 3);
+        }
 
         // Draw points as small circles
         for (size_t i = 0; i < pixel_points.size(); i++) {
-            Scalar point_color = (i < 2) ? Scalar(255, 255, 0) : Scalar(0, 255, 255);  // Cyan for first line, Yellow for second
+            Scalar point_color = Scalar(0, 255, 0);  // Green for all points
             circle(frame, pixel_points[i], 4, point_color, -1);
 
             // Draw point number
@@ -439,7 +442,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
         // Draw points as circles
         for (size_t i = 0; i < pixel_points.size(); i++) {
-            Scalar point_color = (i < 2) ? Scalar(255, 255, 0) : Scalar(0, 255, 255);  // Cyan for first line, Yellow for second
+            Scalar point_color = Scalar(255, 0, 255);  // Magenta for editing mode
             circle(frame, pixel_points[i], 5, point_color, -1);
 
             // Draw point number
@@ -449,13 +452,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }
 
         // Draw line segments as they are being created
-        if (pixel_points.size() >= 2) {
-            // Draw first line segment (points 0-1)
-            line(frame, pixel_points[0], pixel_points[1], Scalar(255, 255, 0), 3);
-        }
-        if (pixel_points.size() >= 4) {
-            // Draw second line segment (points 2-3)
-            line(frame, pixel_points[2], pixel_points[3], Scalar(0, 255, 255), 3);
+        for (size_t i = 0; i < pixel_points.size() - 1; i++) {
+            Scalar line_color = Scalar(255, 0, 255);  // Magenta for editing mode
+            line(frame, pixel_points[i], pixel_points[i + 1], line_color, 2);
         }
     }
 
@@ -472,9 +471,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         putText(frame, instruction, Point(10, frame_height - 20),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 100, 255), 1);
     } else {
-        string instruction = "Crossing Line - Points: " + to_string(crossingline_clicked_points.size()) + "/4" +
+        string instruction = "Crossing Line - Points: " + to_string(crossingline_clicked_points.size()) +
                            " | Created: " + (crossingline_created ? "Yes" : "No") +
-                           " | L-Click: Add (max 4) | R-Click: Create Line | M-Click: Clear";
+                           " | L-Click: Add | R-Click: Create Line | M-Click: Clear";
         putText(frame, instruction, Point(10, frame_height - 20),
                 FONT_HERSHEY_SIMPLEX, 0.5, Scalar(255, 0, 255), 1);
     }
