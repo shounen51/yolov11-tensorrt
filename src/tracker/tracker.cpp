@@ -10,6 +10,7 @@ TrackedObject::TrackedObject(int obj_id, float x, float y, int cls_id, float con
     : id(obj_id), frames_since_update(0), is_confirmed(false),
       last_confidence(conf), class_id(cls_id),
       prev_x(0), prev_y(0), prev_width(0), prev_height(0),
+      prev_input_x(0), prev_input_y(0),
       current_width(0), current_height(0), has_previous_detection(false) {
 
     // 初始化卡爾曼濾波器 (4狀態變量: x, y, vx, vy; 2測量變量: x, y)
@@ -62,10 +63,12 @@ void TrackedObject::update(float x, float y, float conf) {
 }
 
 void TrackedObject::update(float x, float y, float width, float height, float conf) {
-    // 儲存當前狀態作為前一幀資訊（在更新之前）
+    // 儲存當前的實際輸入作為前一幀資訊（在更新之前）
     if (is_confirmed) {
-        prev_x = state.at<float>(0);
-        prev_y = state.at<float>(1);
+        prev_input_x = measurement.at<float>(0);   // 上一幀的實際輸入座標
+        prev_input_y = measurement.at<float>(1);   // 上一幀的實際輸入座標
+        prev_x = state.at<float>(0);               // 上一幀的濾波後座標（用於其他用途）
+        prev_y = state.at<float>(1);               // 上一幀的濾波後座標（用於其他用途）
         prev_width = current_width;
         prev_height = current_height;
         has_previous_detection = true;
@@ -92,8 +95,8 @@ TrackedObject::PreviousDetection TrackedObject::getPreviousDetection() const {
     PreviousDetection prev;
     prev.valid = has_previous_detection;
     if (has_previous_detection) {
-        prev.x = prev_x;
-        prev.y = prev_y;
+        prev.x = prev_input_x;      // 使用實際的輸入座標
+        prev.y = prev_input_y;      // 使用實際的輸入座標
         prev.width = prev_width;
         prev.height = prev_height;
     } else {
@@ -118,10 +121,14 @@ ObjectTracker::ObjectTracker(int max_skip_frames, float max_dist_threshold)
       max_distance_threshold(max_dist_threshold) {
 }
 
-std::vector<std::pair<int, TrackerDetection>> ObjectTracker::update(const std::vector<TrackerDetection>& detections) {
+TrackingResult ObjectTracker::update(const std::vector<TrackerDetection>& detections) {
     std::cout << "\n=== TRACKER UPDATE START ===" << std::endl;
     std::cout << "Current tracked objects: " << tracked_objects.size() << std::endl;
     std::cout << "New detections: " << detections.size() << std::endl;
+
+    TrackingResult result;
+    result.detection_to_track_id.resize(detections.size(), -1);  // 初始化為-1（無匹配）
+    result.total_active_tracks = 0;
 
     // 打印當前所有軌跡狀態
     for (const auto& pair : tracked_objects) {
@@ -145,10 +152,14 @@ std::vector<std::pair<int, TrackerDetection>> ObjectTracker::update(const std::v
     // 如果沒有現有軌跡，為所有檢測創建新軌跡
     if (tracked_objects.empty()) {
         std::cout << "No existing tracks, creating new tracks for all detections" << std::endl;
-        for (const auto& det : detections) {
+        for (size_t i = 0; i < detections.size(); i++) {
+            const auto& det = detections[i];
             tracked_objects[next_id] = std::make_unique<TrackedObject>(
                 next_id, det.x, det.y, det.class_id, det.confidence);
+            result.detection_to_track_id[i] = next_id;
+            result.new_track_ids.push_back(next_id);
             std::cout << "Created new track ID " << next_id
+                      << " for detection " << i
                       << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
             next_id++;
         }
@@ -223,13 +234,14 @@ std::vector<std::pair<int, TrackerDetection>> ObjectTracker::update(const std::v
 
                 std::cout << "Checking assignment: Track ID " << track_id
                           << " predicted at (" << std::fixed << std::setprecision(3) << predicted_pos.x << ", " << predicted_pos.y << ")"
-                          << " vs Detection at (" << det.x << ", " << det.y << ")"
+                          << " vs Detection " << det_idx << " at (" << det.x << ", " << det.y << ")"
                           << " distance: " << distance << " threshold: " << max_distance_threshold << std::endl;
 
                 if (distance <= max_distance_threshold) {
                     tracked_objects[track_id]->update(det.x, det.y, det.width, det.height, det.confidence);
                     detection_matched[det_idx] = true;
                     track_matched[track_idx] = true;
+                    result.detection_to_track_id[det_idx] = track_id;  // 關鍵：直接映射檢測索引到track_id
                     std::cout << "✓ Track ID " << track_id << " updated with detection " << det_idx << std::endl;
                 } else {
                     std::cout << "✗ Track ID " << track_id << " rejected (distance too large)" << std::endl;
@@ -268,6 +280,8 @@ std::vector<std::pair<int, TrackerDetection>> ObjectTracker::update(const std::v
                 const TrackerDetection& det = detections[i];
                 tracked_objects[next_id] = std::make_unique<TrackedObject>(
                     next_id, det.x, det.y, det.class_id, det.confidence);
+                result.detection_to_track_id[i] = next_id;
+                result.new_track_ids.push_back(next_id);
                 std::cout << "Created new track ID " << next_id
                           << " for unmatched detection " << i
                           << " at (" << std::fixed << std::setprecision(3) << det.x << ", " << det.y << ")" << std::endl;
@@ -276,31 +290,20 @@ std::vector<std::pair<int, TrackerDetection>> ObjectTracker::update(const std::v
         }
     }
 
-    // 返回當前所有活躍軌跡的結果
-    std::vector<std::pair<int, TrackerDetection>> results;
-    for (const auto& pair : tracked_objects) {
-        const auto& track = pair.second;
-        auto pos = track->getPredictedPosition();
+    result.total_active_tracks = tracked_objects.size();
 
-        TrackerDetection det;
-        det.x = pos.x;
-        det.y = pos.y;
-        det.width = track->current_width;
-        det.height = track->current_height;
-        det.class_id = track->class_id;
-        det.confidence = track->last_confidence;
-
-        results.emplace_back(track->id, det);
+    std::cout << "Final mapping result:" << std::endl;
+    for (size_t i = 0; i < result.detection_to_track_id.size(); i++) {
+        if (result.detection_to_track_id[i] != -1) {
+            std::cout << "  Detection " << i << " -> Track ID " << result.detection_to_track_id[i] << std::endl;
+        } else {
+            std::cout << "  Detection " << i << " -> NO TRACK" << std::endl;
+        }
     }
-
-    std::cout << "Final active tracks: " << results.size() << std::endl;
-    for (const auto& result : results) {
-        std::cout << "Output Track ID " << result.first
-                  << " at (" << std::fixed << std::setprecision(3) << result.second.x << ", " << result.second.y << ")" << std::endl;
-    }
+    std::cout << "Total active tracks: " << result.total_active_tracks << std::endl;
     std::cout << "=== TRACKER UPDATE END ===\n" << std::endl;
 
-    return results;
+    return result;
 }
 
 std::vector<std::vector<float>> ObjectTracker::computeCostMatrix(

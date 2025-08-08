@@ -14,6 +14,13 @@ struct TrackerDetection {
     TrackerDetection() : x(0), y(0), width(0), height(0), class_id(-1), confidence(0) {}
     TrackerDetection(float cx, float cy, float w, float h, int cls, float conf)
         : x(cx), y(cy), width(w), height(h), class_id(cls), confidence(conf) {}
+};
+
+// 追蹤結果結構：包含檢測索引到追蹤ID的映射
+struct TrackingResult {
+    std::vector<int> detection_to_track_id;  // detection_to_track_id[i] = 檢測i對應的track_id，-1表示無匹配
+    std::vector<int> new_track_ids;          // 新創建的track_id列表
+    int total_active_tracks;                 // 當前活躍軌跡總數
 };struct TrackedObject {
     int id;
     cv::KalmanFilter kalman;
@@ -25,9 +32,10 @@ struct TrackerDetection {
     int class_id;
 
     // 儲存前一幀的邊界框資訊
-    float prev_x, prev_y, prev_width, prev_height;
-    float current_width, current_height; // 當前幀的寬高
-    bool has_previous_detection; // 是否有前一幀的檢測資訊
+    float prev_x, prev_y, prev_width, prev_height;        // 前一幀的實際輸入座標
+    float prev_input_x, prev_input_y;                     // 前一幀的原始輸入座標（用於穿越線檢測）
+    float current_width, current_height;                  // 當前幀的寬高
+    bool has_previous_detection;                          // 是否有前一幀的檢測資訊
 
     TrackedObject(int obj_id, float x, float y, int cls_id, float conf);
     void predict();
@@ -70,8 +78,8 @@ public:
     ObjectTracker(int max_skip_frames = 5, float max_dist_threshold = 0.3f);
     ~ObjectTracker() = default;
 
-    // 主要接口
-    std::vector<std::pair<int, TrackerDetection>> update(const std::vector<TrackerDetection>& detections);
+    // 主要接口：返回檢測索引到track_id的映射
+    TrackingResult update(const std::vector<TrackerDetection>& detections);
 
     // 工具函數
     void reset();

@@ -280,7 +280,7 @@ int main() {
     int climb_fps = 10;
 
     // Camera amount settings
-    int yolo_camera_amount = 1;  // Process cameras 0, 1, 2
+    int yolo_camera_amount = 20;  // Process cameras 0, 1, 2
     int fall_camera_amount = 0;  // Process cameras 0, 1, 2
     int climb_camera_amount = 0;  // Process cameras 0, 1, 2
 

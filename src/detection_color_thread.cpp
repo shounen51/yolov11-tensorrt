@@ -49,7 +49,7 @@ namespace YoloWithColor {
             outputQueues.emplace_back();
             outputQueueMutexes.emplace_back(std::make_unique<std::mutex>());
             outputQueueConditions.emplace_back(std::make_unique<std::condition_variable>());
-            trackers.emplace_back(std::make_unique<ObjectTracker>(5, 0.3f)); // max_skip_frames=5, max_distance_threshold=0.3
+            trackers.emplace_back(std::make_unique<ObjectTracker>(5, 0.2f)); // max_skip_frames=5, max_distance_threshold=0.3
         }
 
         // 啟動執行緒執行 inference_thread
@@ -256,70 +256,72 @@ namespace YoloWithColor {
                             person_count++;
                         }
                     }
-                    auto tracked_objects = trackers[input.camera_id]->update(tracker_detections);
+                    auto tracking_result = trackers[input.camera_id]->update(tracker_detections);
 
-                    // 將追蹤ID分配給檢測結果 - 只對人類進行追蹤ID分配
+                    // 使用新的映射結果直接分配track_id
+                    // tracking_result.detection_to_track_id[i] 直接對應 tracker_detections[i]
+
                     for (int i = 0; i < count; ++i) {
                         output[i].track_id = -1; // 預設無追蹤ID
+                    }
 
-                        // 只對人類檢測分配追蹤ID
+                    // 按順序分配追蹤ID給人類檢測
+                    size_t tracker_detection_index = 0;
+                    for (int i = 0; i < count; ++i) {
                         if (output[i].class_id == model->person_class_id) {
-                            float det_center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
-                            // 使用相同的參考點：上半部框的中心 (y座標向上移動1/8)
-                            float bbox_height = output[i].bbox_ymax - output[i].bbox_ymin;
-                            float det_center_y = output[i].bbox_ymin + bbox_height * 0.125f;
+                            // 檢查是否還有可用的tracker_detection映射
+                            if (tracker_detection_index < tracking_result.detection_to_track_id.size()) {
+                                int track_id = tracking_result.detection_to_track_id[tracker_detection_index];
+                                output[i].track_id = track_id;
 
-                            // 找到最接近的追蹤目標
-                            float min_distance = std::numeric_limits<float>::max();
-                            int best_track_id = -1;
+                                if (track_id != -1) {
+                                    AILOG_DEBUG("Detection " + std::to_string(i) +
+                                              " assigned track ID " + std::to_string(track_id) +
+                                              " (direct mapping from Hungarian algorithm)");
 
-                            for (const auto& tracked_obj : tracked_objects) {
-                                float distance = std::sqrt(std::pow(tracked_obj.second.x - det_center_x, 2) +
-                                                         std::pow(tracked_obj.second.y - det_center_y, 2));
-                                if (distance < min_distance && distance < 0.1f) { // 距離閾值
-                                    min_distance = distance;
-                                    best_track_id = tracked_obj.first;
-                                }
-                            }
+                                    // 處理crossing line檢測
+                                    auto prev_detection = trackers[input.camera_id]->getPreviousDetection(track_id);
+                                    if (prev_detection.valid) {
+                                        // 計算前一幀的底邊中心 (p1)
+                                        float prev_bottom_y = prev_detection.y + prev_detection.height * 0.875f;
+                                        cv::Point2f p1(prev_detection.x, prev_bottom_y);
 
-                            output[i].track_id = best_track_id;
-                            // 如果配對成功，獲取前一幀的 xywh 資訊
-                            if (best_track_id != -1) {
-                                auto prev_detection = trackers[input.camera_id]->getPreviousDetection(best_track_id);
-                                if (prev_detection.valid) {
-                                    // AILOG_DEBUG("Track ID " + std::to_string(best_track_id) +
-                                    //           " previous frame XYWH: (" +
-                                    //           std::to_string(prev_detection.x) + ", " +
-                                    //           std::to_string(prev_detection.y) + ", " +
-                                    //           std::to_string(prev_detection.width) + ", " +
-                                    //           std::to_string(prev_detection.height) + ")");
+                                        // 計算當前幀的底邊中心 (p2)
+                                        float curr_center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
+                                        float curr_bottom_y = output[i].bbox_ymax;
+                                        cv::Point2f p2(curr_center_x, curr_bottom_y);
 
-                                    // 計算前一幀的底邊中心 (p1)
-                                    float prev_bottom_y = prev_detection.y + prev_detection.height * 0.875f;  // 從上1/8位置到底邊
-                                    cv::Point2f p1(prev_detection.x, prev_bottom_y);
+                                        AILOG_DEBUG("Track ID " + std::to_string(track_id) +
+                                                  " previous XY: (" +
+                                                  std::to_string(prev_detection.x) + ", " +
+                                                  std::to_string(prev_bottom_y) + ")" +
+                                                  " current XY: (" +
+                                                  std::to_string(curr_center_x) + ", " +
+                                                  std::to_string(curr_bottom_y) + ")");
 
-                                    // 計算當前幀的底邊中心 (p2)
-                                    float curr_center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
-                                    float curr_bottom_y = output[i].bbox_ymax;
-                                    cv::Point2f p2(curr_center_x, curr_bottom_y);
-                                    for (const auto& [roi_id, roi] : crossing_line_map) {
-                                        cv::Point2f q1 = roi.points[0];
-                                        cv::Point2f q2 = roi.points[1];
-                                        int dir = GeometryUtils::doIntersect(q1, q2, p1, p2);
-                                        if (dir != 0) {
-                                            output[i].crossing_line_id = roi_id; // 設置 crossing_line 為 crossing line ID
-                                            output[i].crossing_line_direction = (dir == roi.in_area_direction) ? 1 : -1; // 如果和設定的進入方向相同+1，相反-1
-                                            AILOG_INFO("Track ID " + std::to_string(best_track_id) +
-                                                        " crossed line in " + std::to_string(roi_id) + ", direction: " + std::to_string(output[i].crossing_line_direction));
+                                        for (const auto& [roi_id, roi] : crossing_line_map) {
+                                            cv::Point2f q1 = roi.points[0];
+                                            cv::Point2f q2 = roi.points[1];
+                                            int dir = GeometryUtils::doIntersect(q1, q2, p1, p2);
+                                            if (dir != 0) {
+                                                output[i].crossing_line_id = roi_id;
+                                                output[i].crossing_line_direction = (dir == roi.in_area_direction) ? 1 : -1;
+                                                AILOG_INFO("Track ID " + std::to_string(track_id) +
+                                                          " crossed line in " + std::to_string(roi_id) +
+                                                          ", direction: " + std::to_string(output[i].crossing_line_direction));
+                                            }
                                         }
                                     }
+                                } else {
+                                    AILOG_DEBUG("Detection " + std::to_string(i) + " has no track assignment");
                                 }
+
+                                tracker_detection_index++; // 移動到下一個tracker_detection
                             }
                         }
                     }
-
                     AILOG_DEBUG("Camera " + std::to_string(input.camera_id) + " tracking: " +
-                              std::to_string(trackers[input.camera_id]->getTrackedObjectCount()) + " objects tracked");
+                              std::to_string(tracking_result.total_active_tracks) + " objects tracked");
                 }
                 catch (const std::exception& e) {
                     AILOG_ERROR("Exception in tracking for camera " + std::to_string(input.camera_id) + ": " + std::string(e.what()));
