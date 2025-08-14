@@ -427,18 +427,46 @@ extern "C" {
         }
     }
     YOLOV11_API void release() {
+        // 清理 YoloWithColor 資源
         YoloWithColor::stopThread = true;
-        YoloWithColor::inputQueueCondition.notify_all(); // 通知執行緒停止等待
-
-        // 通知所有output condition variables
+        YoloWithColor::inputQueueCondition.notify_all();
         for (auto& cv : YoloWithColor::outputQueueConditions) {
             cv->notify_all();
         }
-
         if (YoloWithColor::inferenceThread.joinable()) {
             YoloWithColor::inferenceThread.join();
         }
-        AILOG_INFO("Inference thread stopped.");
         YoloWithColor::model.reset();
+        AILOG_INFO("YoloWithColor thread stopped and resources cleared.");
+
+        // 清理 Fall Detection 資源
+        fall::stopThread = true;
+        fall::inputQueueCondition.notify_all();
+        for (auto& cv : fall::outputQueueConditions) {
+            cv->notify_all();
+        }
+        if (fall::inferenceThread.joinable()) {
+            fall::inferenceThread.join();
+        }
+        AILOG_INFO("Fall detection thread stopped and resources cleared.");
+
+        // 清理 Climb Detection 資源
+        climb::stopThread = true;
+        climb::inputQueueCondition.notify_all();
+        for (auto& cv : climb::outputQueueConditions) {
+            cv->notify_all();
+        }
+        if (climb::inferenceThread.joinable()) {
+            climb::inferenceThread.join();
+        }
+        AILOG_INFO("Climb detection thread stopped and resources cleared.");
+
+        // 清理所有 ROI 和穿越線資源
+        camera_function_roi_map.clear();
+        MRTRedlightROI_map.clear();
+        CrossingLineROI_map.clear();
+        AILOG_INFO("All ROI and crossing line data cleared.");
+
+        AILOG_INFO("All resources released successfully.");
     }
 }

@@ -296,9 +296,9 @@ namespace climb {
                 for (auto& roi_pair : *roi_map_ptr) {
                     roi_ptr = &roi_pair.second; // 取得指針，指向原始數據
                     roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
-                    for (int j = 0; j < roi_ptr->alarm.size(); ++j) {
+                    // for (int j = 0; j < roi_ptr->alarm.size(); ++j) {
                         // AILOG_DEBUG("ROI alarm[" + std::to_string(j) + "]: " + std::to_string(roi_ptr->alarm[j]));
-                    }
+                    // }
                 }
             }
 

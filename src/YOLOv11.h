@@ -27,6 +27,7 @@ public:
     int input_h;
     int num_classes = 11;
     int person_on_wheelchair_class_id = 10; // pw special
+    int wheelchair_class_id = 9;
     int person_class_id = 0;
 
     void preprocess(uint8_t* gpu_rgb_buffer, int im0_w, int im0_h, bool block=true);
@@ -54,7 +55,7 @@ private:
     int detection_attribute_size;
     const int MAX_IMAGE_SIZE = 4096 * 4096;
     float conf_threshold = 0.3f;
-    float nms_threshold = 0.7f;
+    float nms_threshold = 0.5f;
 
     vector<Scalar> colors;
 

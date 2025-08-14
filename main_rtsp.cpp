@@ -589,7 +589,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             break;
         case functions::FALL:
             engine_path1 = "wheelchair_m_1.3.0.engine";
-            engine_path2 = "yolo-fall4-cls_1.3.engine";
+            engine_path2 = "yolo-fall4s-cls_1.5.0.engine";
             break;
         case functions::CLIMB:
             engine_path1 = "yolo11x-pose.engine";
@@ -774,7 +774,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                     }
                     break;
                 case functions::FALL:
-                    if ((string(obj.pose) == "falling" || string(obj.pose) == "fall") && obj.in_roi_id != -1) {
+                    if (string(obj.pose) == "fall" && obj.in_roi_id != -1) {
                         red_box_count++;
                     }
                     break;
@@ -821,7 +821,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }
 
         // Check for key presses
-        char key = waitKey(wait_time) & 0xFF;
+        char key = waitKey(5) & 0xFF;
         if (key == 27) { // ESC key
             cout << "[INFO] ESC pressed, exiting..." << endl;
             break;

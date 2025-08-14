@@ -186,13 +186,26 @@ namespace fall {
                 }
             }
 
+            // 先收集所有輪椅相關檢測的框座標
+            std::vector<cv::Rect> wheelchair_boxes;
+            for (int i = 0; i < count; ++i) {
+                const auto& det = detections[i];
+                if (det.class_id == model->wheelchair_class_id || det.class_id == model->person_on_wheelchair_class_id) {
+                    // 計算輪椅框在原圖的座標
+                    float x1 = (det.bbox.x - pad_x) / r;
+                    float y1 = (det.bbox.y - pad_y) / r;
+                    float x2 = (det.bbox.x + det.bbox.width - pad_x) / r;
+                    float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
+                    wheelchair_boxes.push_back(cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2)));
+                    AILOG_DEBUG("Wheelchair box detected: (" + std::to_string(x1) + "," + std::to_string(y1) +
+                              ") to (" + std::to_string(x2) + "," + std::to_string(y2) + ")");
+                }
+            }
+
             for (int i = 0; i < count; ++i) {
                 const auto& det = detections[i];
                 if (det.class_id != model->person_class_id) {
-                    continue; // 只處理人類檢測
-                }
-                if (det.bbox.width < 0.05 || det.bbox.height < 0.1) {
-                    continue; // 忽略過小的檢測框
+                    continue; // 只處理人
                 }
                 // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
                 float x1 = (det.bbox.x - pad_x) / r;
@@ -223,8 +236,20 @@ namespace fall {
                 output[i].bbox_ymax = norm_y2;
                 output[i].class_id = det.class_id;
                 output[i].confidence = det.conf;
-                strncpy(output[i].pose, fall_classname[STAND_CLASS].c_str(), sizeof(output[i].pose) - 1);
+
+                strncpy(output[i].pose, "none", sizeof(output[i].pose) - 1);
                 output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
+
+                // 檢查人的中心是否在任何輪椅框內
+                cv::Point person_center(int((x1 + x2) / 2), int((y1 + y2) / 2));
+                bool in_wheelchair = false;
+                for (const auto& wheelchair_box : wheelchair_boxes) {
+                    if (wheelchair_box.contains(person_center)) {
+                        in_wheelchair = true;
+                        break;
+                    }
+                }
+
                 // 檢查是否在 ROI 內
                 if (roi_map_ptr == nullptr || roi_map_ptr->size() == 0) {
                     continue; // 如果沒有 ROI，則跳過
@@ -239,10 +264,6 @@ namespace fall {
                             roi_ptr->mask.at<uchar>(bottom_middle) != 0) {
                             output[i].in_roi_id = roi_pair.first; // 設定 ROI ID
 
-                            if (det.bbox.height >= 3 * det.bbox.width) {
-                                // 高度超過寬度三倍，強制判定為站立
-                                break;
-                            }
                             // 如果在 ROI 內，做跌倒辨識
                             // 確保裁剪座標在圖像邊界內
                             int crop_x1 = std::max(0, static_cast<int>(x1));
@@ -269,6 +290,7 @@ namespace fall {
                             cudaMemcpy(fallBuffers[0], fallInput, sizeof(fallInput), cudaMemcpyHostToDevice);
                             context->executeV2(fallBuffers);
                             cudaMemcpy(fallOutput, fallBuffers[1], sizeof(fallOutput), cudaMemcpyDeviceToHost);
+
                             // 取 fallOutput 最大值作為跌倒判斷
                             float max_conf = fallOutput[0];
                             int max_index = 0;
@@ -277,6 +299,11 @@ namespace fall {
                                     max_conf = fallOutput[j];
                                     max_index = j;
                                 }
+                            }
+                            // 如果人在輪椅內，跳過跌倒檢測
+                            if (in_wheelchair) {
+                                max_index = STAND_CLASS; // 如果人在輪椅內，標記為坐在椅子上(stand)
+                                AILOG_DEBUG("Person in wheelchair, setting pose to STAND_CLASS");
                             }
                             std::string fall_label = fall_classname[max_index];
                             if (max_index <= fall_index) {

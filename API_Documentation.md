@@ -30,8 +30,8 @@ typedef struct svResultProjectObject_DataType {
     int crossing_line_direction;  // 穿越方向 (1=正向, -1=反向, 0=無穿越)
     char color_label_first[16];   // 第一個顏色標籤 (上半身或整體)
     char color_label_second[16];  // 第二個顏色標籤 (下半身)
-    char pose[16];                // 姿勢標籤 (FALL 功能使用)
-    char climb[16];               // 攀爬標籤 (CLIMB 功能使用)
+    char pose[16];                // 姿勢標籤 (FALL 功能使用) [none, stand, falling, fall]
+    char climb[16];               // 攀爬標籤 (CLIMB 功能使用) [none, stand, climbing, climb]
 } svObjData_t;
 ```
 
@@ -66,7 +66,7 @@ svCreate_ObjectModules(functions::YOLO_COLOR, 128,
 // 初始化跌倒檢測
 svCreate_ObjectModules(functions::FALL, 128,
                       "wheelchair_m_1.3.0.engine",
-                      "yolo-fall4-cls_1.3.engine",
+                      "yolo-fall4s-cls_1.5.0.engine",
                       0.3f, "log/fall.log");
 ```
 
@@ -328,10 +328,28 @@ svRemove_MRTRedlightROI(camera_id, function_id, roi_id);
 release();
 ```
 
-## 版本信息
+## 版本訊息
 
-**當前版本**：1.0.0
-**描述**：YOLOv11 TensorRT Detection Library
+**當前版本**：1.0.1
+
+使用模型版本及threshold：
+ - YOLO_COLOR:
+    - model1: wheelchair_m_1.3.0.engine
+    - model2: wheelchair_m_1.3.0.engine
+    - threshold: 0.3
+ - FALL:
+    - model1: wheelchair_m_1.3.0.engine
+    - model2: yolo-fall4s-cls_1.5.0.engine
+    - threshold: 0.3
+ - CLIMB:
+    - model1: yolo11x-pose.engine.engine
+    - model2: yolo11x-pose.engine.engine
+    - threshold: 0.3
+
+更新內容：
+1. 跌倒偵測會判斷人框中心是否在輪椅框中，若是則強制不跌倒
+2. 跌倒的預設狀態為 "none"，不再是"stand"
+
 
 
 ---
@@ -340,4 +358,8 @@ release();
 
 詳細的使用範例可參考：
 - `main.cpp`：基本多攝像頭處理範例
+
+    執行：`.\yolov11_dll.exe`
 - `main_rtsp.cpp`：RTSP 串流處理與 ROI 互動範例
+
+    執行：`.\main_rtsp.exe climb rtsp://root:root@192.168.31.212/cam1/h264-1 ./log/climb.log`
