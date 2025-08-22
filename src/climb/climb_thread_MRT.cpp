@@ -356,11 +356,11 @@ namespace climb {
                 float angle_rad = atan2(abs(dx), abs(dy));  // 使用絕對值，只關心傾斜程度
                 float angle_deg = angle_rad * 180.0f / M_PI;  // 轉換為度數
 
-                // 只有當傾斜角度大於等於25度時才進行ROI相交判斷
+                // 只有當傾斜角度大於等於20度時才進行ROI相交判斷
                 if (angle_deg < 15.0f) {
                     continue;
                 }
-                else if (angle_deg < 25.0f) {
+                else if (angle_deg < 20.0f) {
                     AILOG_DEBUG("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical, but not enough for climb detection");
                     continue;
                 }

@@ -2,9 +2,24 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <chrono>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 using namespace std;
 using namespace cv;
+
+// Function to get screen dimensions
+Size getScreenSize() {
+#ifdef _WIN32
+    int screen_width = GetSystemMetrics(SM_CXSCREEN);
+    int screen_height = GetSystemMetrics(SM_CYSCREEN);
+    return Size(screen_width, screen_height);
+#else
+    // Default fallback for non-Windows systems
+    return Size(1920, 1080);
+#endif
+}
 
 // 模式枚舉
 enum DrawMode {
@@ -19,6 +34,8 @@ bool point_clicked = false;
 bool close_polygon = false;     // Flag to close the polygon
 int frame_width_global = 0;
 int frame_height_global = 0;
+int window_width_global = 0;    // Window display size
+int window_height_global = 0;   // Window display size
 functions current_function = functions::YOLO_COLOR;  // Store current function
 int current_camera_id = 0;  // Store current camera ID
 
@@ -89,26 +106,34 @@ Mat correctFrameOrientation(const Mat& input_frame, bool check_orientation = fal
 void onMouse(int event, int x, int y, int flags, void* userdata) {
     if (event == EVENT_LBUTTONDOWN) {
         Point2f new_point;
-        new_point.x = (float)x / frame_width_global;  // Normalize to 0-1
-        new_point.y = (float)y / frame_height_global; // Normalize to 0-1
+        // Convert window coordinates to normalized coordinates based on original frame size
+        // First convert from window coordinates to frame coordinates
+        float frame_x = (float)x * frame_width_global / window_width_global;
+        float frame_y = (float)y * frame_height_global / window_height_global;
+        // Then normalize to 0-1 based on original frame size
+        new_point.x = frame_x / frame_width_global;
+        new_point.y = frame_y / frame_height_global;
 
         if (current_draw_mode == NORMAL_ROI_MODE) {
             clicked_points.push_back(new_point);
             close_polygon = false;  // Reset close flag when adding new point
             cout << "[MOUSE] Normal ROI - Added point " << clicked_points.size()
-                 << " at pixel(" << x << ", " << y << ") = normalized("
-                 << new_point.x << ", " << new_point.y << ")" << endl;
+                 << " at window(" << x << ", " << y << ") = frame("
+                 << (int)(new_point.x * frame_width_global) << ", " << (int)(new_point.y * frame_height_global)
+                 << ") = normalized(" << new_point.x << ", " << new_point.y << ")" << endl;
         } else if (current_draw_mode == REDLIGHT_ROI_MODE) {
             redlight_clicked_points.push_back(new_point);
             redlight_close_polygon = false;  // Reset close flag when adding new point
             cout << "[MOUSE] Redlight ROI - Added point " << redlight_clicked_points.size()
-                 << " at pixel(" << x << ", " << y << ") = normalized("
-                 << new_point.x << ", " << new_point.y << ")" << endl;
+                 << " at window(" << x << ", " << y << ") = frame("
+                 << (int)(new_point.x * frame_width_global) << ", " << (int)(new_point.y * frame_height_global)
+                 << ") = normalized(" << new_point.x << ", " << new_point.y << ")" << endl;
         } else if (current_draw_mode == CROSSINGLINE_ROI_MODE) {
             crossingline_clicked_points.push_back(new_point);
             cout << "[MOUSE] Crossing Line - Added point " << crossingline_clicked_points.size()
-                 << " at pixel(" << x << ", " << y << ") = normalized("
-                 << new_point.x << ", " << new_point.y << ")" << endl;
+                 << " at window(" << x << ", " << y << ") = frame("
+                 << (int)(new_point.x * frame_width_global) << ", " << (int)(new_point.y * frame_height_global)
+                 << ") = normalized(" << new_point.x << ", " << new_point.y << ")" << endl;
         }
 
         point_clicked = true;
@@ -253,29 +278,27 @@ const char* getFunctionName(functions func) {
 }
 
 void printUsage(const char* program_name) {
-    cout << "\n=== RTSP Detection System ===" << endl;
+    cout << "\n=== RTSP 偵測系統 ===" << endl;
     cout << "用法: " << program_name << " <function> <input_source> <log_file> [target_fps] [rotation]" << endl;
-    cout << "\n参数:" << endl;
-    cout << "  function      检测功能 (yolo|fall|climb)" << endl;
-    cout << "  input_source  RTSP流地址或视频文件路径" << endl;
-    cout << "  log_file      日志文件路径" << endl;
-    cout << "  target_fps    可选：目标FPS (跳帧处理，如5表示每秒处理5帧)" << endl;
-    cout << "  rotation      可选：视频旋转角度 (0|90|180|270)" << endl;
-    cout << "\n示例:" << endl;
+    cout << "\n參數:" << endl;
+    cout << "  function      偵測功能 (yolo|fall|climb)" << endl;
+    cout << "  input_source  RTSP串流地址或影片檔案路徑" << endl;
+    cout << "  log_file      日誌檔案路徑" << endl;
+    cout << "  target_fps    可選：目標FPS (跳幀處理，如5表示每秒處理5幀)" << endl;
+    cout << "  rotation      可選：影片旋轉角度 (0|90|180|270)" << endl;
+    cout << "\n範例:" << endl;
     cout << "  " << program_name << " yolo rtsp://admin:admin123@192.168.1.100:554/stream1 log/log.log" << endl;
     cout << "  " << program_name << " fall rtsp://192.168.1.100:8554/stream log/fall.log" << endl;
     cout << "  " << program_name << " climb video.mp4 log/climb.log 10" << endl;
     cout << "  " << program_name << " yolo test.avi log/yolo.log 5 180" << endl;
-    cout << "\n交互控制:" << endl;
-    cout << "  鼠标左键    点击添加点到多边形/线段" << endl;
-    cout << "  鼠标右键    创建ROI区域/穿越线段" << endl;
-    cout << "  鼠标中键    清除所有点并重置" << endl;
-    cout << "  Tab键       切换ROI模式(正常/红灯/穿越线)" << endl;
-    cout << "  ESC键       退出程序" << endl;
-    cout << "\n穿越线模式:" << endl;
-    cout << "  - 需要4个点：前2个点构成第一条线段，后2个点构成第二条线段" << endl;
-    cout << "  - 两条线段用不同颜色显示（青色和黄色）" << endl;
-    cout << "  - 用于检测物体穿越特定线段的行为" << endl;
+    cout << "\n互動控制:" << endl;
+    cout << "  滑鼠左鍵    點擊新增點到多邊形/線段" << endl;
+    cout << "  滑鼠右鍵    建立ROI區域/穿越線段" << endl;
+    cout << "  滑鼠中鍵    清除所有點並重設" << endl;
+    cout << "  Tab鍵       切換ROI模式(正常/紅燈/穿越線)" << endl;
+    cout << "  ESC鍵       退出程式" << endl;
+    cout << "\n穿越線模式:" << endl;
+    cout << "  - 用於偵測物體穿越特定線段的行為" << endl;
 }
 
 void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, functions function_type) {
@@ -480,7 +503,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     for (int i = 0; i < num_objects; i++) {
         const auto& obj = results[i];
-        if (obj.class_id != 0) continue; // Skip non-person objects
+        if (obj.class_id != 0 && obj.class_id != 9 && obj.class_id != 10) continue; // Skip non-person objects
         // 将归一化坐标 (0~1) 转换为像素坐标
         int x1 = static_cast<int>(obj.bbox_xmin * frame_width);
         int y1 = static_cast<int>(obj.bbox_ymin * frame_height);
@@ -584,16 +607,16 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     string engine_path1, engine_path2;
     switch (selected_function) {
         case functions::YOLO_COLOR:
-            engine_path1 = "wheelchair_m_1.3.0.engine";
-            engine_path2 = "wheelchair_m_1.3.0.engine";
+            engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+            engine_path2 = "weights/wheelchair_m_1.3.0.engine";
             break;
         case functions::FALL:
-            engine_path1 = "wheelchair_m_1.3.0.engine";
-            engine_path2 = "yolo-fall4s-cls_1.5.0.engine";
+            engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+            engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
             break;
         case functions::CLIMB:
-            engine_path1 = "yolo11x-pose.engine";
-            engine_path2 = "yolo11x-pose.engine";
+            engine_path1 = "weights/yolo11x-pose.engine";
+            engine_path2 = "weights/yolo11x-pose.engine";
             break;
     }
 
@@ -660,7 +683,14 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     int width = frame_bgr.cols;
     int height = frame_bgr.rows;
-    cout << "[INFO] Frame size: " << width << "x" << height << endl;
+    cout << "[INFO] Original frame size: " << width << "x" << height << endl;
+
+    // Get screen size and calculate window size (1/4 of screen)
+    Size screen_size = getScreenSize();
+    int window_width = screen_size.width / 2;   // 1/2 width
+    int window_height = screen_size.height / 2; // 1/2 height (total = 1/4 area)
+    cout << "[INFO] Screen size: " << screen_size.width << "x" << screen_size.height << endl;
+    cout << "[INFO] Window size: " << window_width << "x" << window_height << endl;
 
     // Initialize detection model
     const char* log_file = log_file_path.c_str();
@@ -670,6 +700,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     // Set global frame dimensions for mouse callback
     frame_width_global = width;
     frame_height_global = height;
+    window_width_global = window_width;
+    window_height_global = window_height;
     current_function = selected_function;
     current_camera_id = camera_id;
 
@@ -678,10 +710,11 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     cout << "[INFO] Starting detection and display..." << endl;
 
-    // Create window
+    // Create window with fixed size
     string window_name = "Detection - " + string(getFunctionName(selected_function)) +
                         (is_rtsp ? " (RTSP)" : " (Video)");
-    namedWindow(window_name, WINDOW_AUTOSIZE);
+    namedWindow(window_name, WINDOW_NORMAL);
+    resizeWindow(window_name, window_width, window_height);
 
     // Set mouse callback
     setMouseCallback(window_name, onMouse, nullptr);
@@ -769,8 +802,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             // Count objects that trigger red boxes (in ROI)
             switch (selected_function) {
                 case functions::YOLO_COLOR:
-                    if (obj.crossing_line_id != -1) {
-                        red_box_count += obj.crossing_line_direction;
+                    if (obj.in_roi_id != -1) {
+                        // red_box_count += obj.crossing_line_direction;
+                        red_box_count++;
                     }
                     break;
                 case functions::FALL:
@@ -790,15 +824,13 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         total_red_box_count += red_box_count;
 
         // Display cumulative red box count in red text
-        string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
-        putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
+        // string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
+        // putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
 
 
         // Display current frame red box count if any
-        if (red_box_count > 0) {
-            string current_text = "Current: " + to_string(red_box_count);
-            putText(frame_bgr, current_text, Point(10, 135), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 2);
-        }
+        string current_text = "Current: " + to_string(red_box_count);
+        putText(frame_bgr, current_text, Point(10, 135), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 2);
 
         // Add frame counter and progress for video files
         if (is_video_file && total_frames > 0) {
@@ -807,8 +839,14 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             putText(frame_bgr, progress_text, Point(10, 170), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2);
         } else {
             putText(frame_bgr, "Frame: " + to_string(frame_count), Point(10, 170), FONT_HERSHEY_SIMPLEX, 0.7, Scalar(255, 255, 255), 2);
-        }        // Display frame
-        imshow(window_name, frame_bgr);
+        }
+
+        // Resize frame for display to match window size
+        Mat display_frame;
+        resize(frame_bgr, display_frame, Size(window_width, window_height));
+
+        // Display frame
+        imshow(window_name, display_frame);
 
         // For video files, add delay to maintain target frame rate (subtract processing time)
         int wait_time = 1;
@@ -821,7 +859,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }
 
         // Check for key presses
-        char key = waitKey(5) & 0xFF;
+        char key = waitKey(wait_time) & 0xFF;
         if (key == 27) { // ESC key
             cout << "[INFO] ESC pressed, exiting..." << endl;
             break;

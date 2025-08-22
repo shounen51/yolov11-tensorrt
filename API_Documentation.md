@@ -330,7 +330,7 @@ release();
 
 ## 版本訊息
 
-**當前版本**：1.0.1
+**當前版本**：1.0.2
 
 使用模型版本及threshold：
  - YOLO_COLOR:
@@ -339,17 +339,16 @@ release();
     - threshold: 0.3
  - FALL:
     - model1: wheelchair_m_1.3.0.engine
-    - model2: yolo-fall4s-cls_1.5.0.engine
+    - model2: yolo-fall4s-cls_1.6.1.engine
     - threshold: 0.3
  - CLIMB:
     - model1: yolo11x-pose.engine.engine
     - model2: yolo11x-pose.engine.engine
     - threshold: 0.3
 
-更新內容：
-1. 跌倒偵測會判斷人框中心是否在輪椅框中，若是則強制不跌倒
-2. 跌倒的預設狀態為 "none"，不再是"stand"
-
+1.0.2更新內容：
+1. 跌倒偵測會輸出class9:輪椅和class10:坐輪椅的人
+2. 爬牆偵測的脊椎線傾斜條件從25度改成20度
 
 
 ---

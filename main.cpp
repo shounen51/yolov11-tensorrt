@@ -263,15 +263,15 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
 }
 
 int main() {
-    const char* yolo_engine_path1 = "wheelchair_m_1.3.0.engine";
-    const char* yolo_engine_path2 = "wheelchair_m_1.3.0.engine";
-    const char* fall_engine_path1 = "wheelchair_m_1.3.0.engine";
-    const char* fall_engine_path2 = "yolo-fall4s-cls_1.5.0.engine";
-    const char* climb_engine_path1 = "yolo11x-pose.engine";
-    const char* climb_engine_path2 = "yolo11x-pose.engine";
-    const char* yolo_video_path = "yolo.mp4";
-    const char* fall_video_path = "fall.mp4";
-    const char* climb_video_path = "climb.mp4";
+    const char* yolo_engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+    const char* yolo_engine_path2 = "weights/wheelchair_m_1.3.0.engine";
+    const char* fall_engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+    const char* fall_engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
+    const char* climb_engine_path1 = "weights/yolo11x-pose.engine";
+    const char* climb_engine_path2 = "weights/yolo11x-pose.engine";
+    const char* yolo_video_path = "videos/yolo.mp4";
+    const char* fall_video_path = "videos/fall.mp4";
+    const char* climb_video_path = "videos/climb.mp4";
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread

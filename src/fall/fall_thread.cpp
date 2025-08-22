@@ -204,8 +204,8 @@ namespace fall {
 
             for (int i = 0; i < count; ++i) {
                 const auto& det = detections[i];
-                if (det.class_id != model->person_class_id) {
-                    continue; // 只處理人
+                if (det.class_id != model->person_class_id && det.class_id != model->wheelchair_class_id && det.class_id != model->person_on_wheelchair_class_id) {
+                    continue; // 只處理人和輪椅
                 }
                 // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
                 float x1 = (det.bbox.x - pad_x) / r;
@@ -240,6 +240,9 @@ namespace fall {
                 strncpy(output[i].pose, "none", sizeof(output[i].pose) - 1);
                 output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
 
+                if (det.class_id != model->person_class_id) {
+                    continue; // 跌倒分析只處理人
+                }
                 // 檢查人的中心是否在任何輪椅框內
                 cv::Point person_center(int((x1 + x2) / 2), int((y1 + y2) / 2));
                 bool in_wheelchair = false;
