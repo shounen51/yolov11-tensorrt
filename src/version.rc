@@ -1,10 +1,14 @@
 #include <windows.h>
 
-// 只需要在這裡修改版本號
-#define VER_MAJOR 1     // 結構性修改
-#define VER_MINOR 0     // 介面修改
-#define VER_PATCH 2     // 其他修改
-#define VER_BUILD 0
+// 版本號更新規則：
+// MAJOR: 重大架構變更、API不相容變更
+// MINOR: 新功能增加、API向下相容的變更
+// PATCH: Bug修復、小幅改進、效能優化
+// BUILD: 自動構建編號 (可選)
+#define VER_MAJOR 1     // 重大架構變更、API破壞性變更
+#define VER_MINOR 1     // 新功能、向下相容的API變更、數據不相容的更新
+#define VER_PATCH 0     // Bug修復、小幅改進
+#define VER_BUILD 0     // 構建編號（可選）
 
 // 自動生成版本格式 - 不需要修改以下內容
 #define VER_FILEVERSION VER_MAJOR,VER_MINOR,VER_PATCH,VER_BUILD

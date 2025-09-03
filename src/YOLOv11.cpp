@@ -151,6 +151,9 @@ void YOLOv11::postprocess(vector<Detection>& output)
     vector<Rect> boxes_pw; // pw special
     vector<int> class_ids_pw; // pw special
     vector<float> confidences_pw; // pw special
+    vector<Rect> boxes_w; // pw special
+    vector<int> class_ids_w; // pw special
+    vector<float> confidences_w; // pw special
     const Mat det_output(detection_attribute_size, num_detections, CV_32F, cpu_output_buffer);
 
     for (int i = 0; i < det_output.cols; ++i) {
@@ -169,16 +172,23 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.y = static_cast<int>((cy - 0.5 * oh));
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
-            if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == person_class_id) {
+
+            if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == static_cast<int>(CustomClass::PERSON)) {
                 // filter out large boxes
                 AILOG_INFO("Filter out large person box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
                 continue;
             }
-            if (class_id_point.y == person_on_wheelchair_class_id){ // pw special
+            if (class_id_point.y == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) { // pw special
                 boxes_pw.push_back(box); // pw special
                 class_ids_pw.push_back(class_id_point.y); // pw special
                 confidences_pw.push_back(score); // pw special
             } // pw special
+            else if (class_id_point.y == static_cast<int>(CustomClass::WHEELCHAIR)) {
+                boxes_w.push_back(box);
+                class_ids_w.push_back(class_id_point.y);
+                confidences_w.push_back(score);
+            }
+
             else { // pw special
                 boxes.push_back(box);
                 class_ids.push_back(class_id_point.y);
@@ -191,22 +201,90 @@ void YOLOv11::postprocess(vector<Detection>& output)
     dnn::NMSBoxes(boxes, confidences, conf_threshold, nms_threshold, nms_result);
     vector<int> nms_result_pw; // pw special
     dnn::NMSBoxes(boxes_pw, confidences_pw, conf_threshold, nms_threshold, nms_result_pw); // pw special
+    vector<int> nms_result_w; // pw special
+    dnn::NMSBoxes(boxes_w, confidences_w, conf_threshold, nms_threshold, nms_result_w); // pw special
+
+    // 收集所有人框的中心點 (包括一般人和輪椅上的人)
+    vector<Point> person_centers;
+    for (int i = 0; i < nms_result.size(); i++) {
+        int idx = nms_result[i];
+        if (class_ids[idx] == static_cast<int>(CustomClass::PERSON)) {
+            Rect box = boxes[idx];
+            Point center(box.x + box.width/2, box.y + box.height/2);
+            person_centers.push_back(center);
+        }
+    }
+    for (int i = 0; i < nms_result_pw.size(); i++) {
+        int idx = nms_result_pw[i];
+        if (class_ids_pw[idx] == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) {
+            Rect box = boxes_pw[idx];
+            Point center(box.x + box.width/2, box.y + box.height/2);
+            person_centers.push_back(center);
+        }
+    }
+
+    // 過濾一般檢測框 - 移除包含超過2個人框中心的框
     for (int i = 0; i < nms_result.size(); i++)
     {
-        Detection result;
         int idx = nms_result[i];
+        Rect current_box = boxes[idx];
+
+        // 計算當前框中包含多少個人框中心
+        int person_count_in_box = 0;
+        for (const Point& center : person_centers) {
+            if (current_box.contains(center)) {
+                person_count_in_box++;
+            }
+        }
+
+        // 如果包含超過2個人框中心，則跳過這個檢測
+        if (person_count_in_box > 2) {
+            AILOG_INFO("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
+                      std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
+            continue;
+        }
+
+        Detection result;
         result.class_id = class_ids[idx];
         result.conf = confidences[idx];
         result.bbox = boxes[idx];
         output.push_back(result);
     }
+
+    // 過濾輪椅上的人檢測框 - 移除包含超過2個人框中心的框
     for (int i = 0; i < nms_result_pw.size(); i++) // pw special
     {
+        int idx = nms_result_pw[i];
+        Rect current_box = boxes_pw[idx];
+
+        // 計算當前框中包含多少個人框中心
+        int person_count_in_box = 0;
+        for (const Point& center : person_centers) {
+            if (current_box.contains(center)) {
+                person_count_in_box++;
+            }
+        }
+
+        // 如果包含超過2個人框中心，則跳過這個檢測
+        if (person_count_in_box > 2) {
+            AILOG_INFO("Filter out person_on_wheelchair box containing " + std::to_string(person_count_in_box) +
+                      " person centers: " + std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
+            continue;
+        }
+
         Detection result;
-        int idx = nms_result_pw[i]; // pw special
         result.class_id = class_ids_pw[idx]; // pw special
         result.conf = confidences_pw[idx]; // pw special
         result.bbox = boxes_pw[idx]; // pw special
+        output.push_back(result); // pw special
+    } // pw special
+    for (int i = 0; i < nms_result_w.size(); i++) // pw special
+    {
+        Detection result;
+        int idx = nms_result_w[i]; // pw special
+        result.class_id = class_ids_w[idx]; // pw special
+        result.conf = confidences_w[idx]; // pw special
+        result.bbox = boxes_w[idx]; // pw special
         output.push_back(result); // pw special
     } // pw special
 }

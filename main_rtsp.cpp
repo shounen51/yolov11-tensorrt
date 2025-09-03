@@ -503,7 +503,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     for (int i = 0; i < num_objects; i++) {
         const auto& obj = results[i];
-        if (obj.class_id != 0 && obj.class_id != 9 && obj.class_id != 10) continue; // Skip non-person objects
+        if (obj.class_id != 0 && obj.class_id != 3 && obj.class_id != 80 && obj.class_id != 81) continue; // Skip non-person objects
+
         // 将归一化坐标 (0~1) 转换为像素坐标
         int x1 = static_cast<int>(obj.bbox_xmin * frame_width);
         int y1 = static_cast<int>(obj.bbox_ymin * frame_height);
@@ -516,33 +517,53 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         x2 = max(0, min(x2, frame_width - 1));
         y2 = max(0, min(y2, frame_height - 1));
 
-        // 根据不同功能设置不同颜色
+        // 根據物件類別設置不同顏色 (避開黃色和紅色)
         string label;
-        Scalar color = Scalar(0, 255, 0); // 绿色
+        Scalar color;
         Scalar text_color = Scalar(255, 255, 255); // 白色文字
 
+        // 根據class_id設置基礎顏色
+        switch (obj.class_id) {
+            case 0:
+                color = Scalar(0, 255, 0);   // 綠色 - person
+                break;
+            case 3:
+                color = Scalar(255, 0, 0);   // 藍色 - motorcycle
+                break;
+            case 80:
+                color = Scalar(255, 0, 255); // 紫色 - traffic light
+                break;
+            case 81:
+                color = Scalar(255, 128, 0); // 橙色 - fire hydrant
+                break;
+            default:
+                color = Scalar(128, 128, 128); // 灰色 - 預設
+                break;
+        }
+
+        // 根據不同功能調整標籤和顏色
         switch (function_type) {
             case functions::YOLO_COLOR:
-                label = "object_" + to_string(obj.class_id) + "_in roi: " + to_string(obj.in_roi_id);
+                label = to_string(obj.class_id) + " in roi: " + to_string(obj.in_roi_id);
                 if (obj.in_roi_id != -1) {
-                    color = Scalar(0, 0, 225); // 红色
+                    color = Scalar(0, 0, 255); // 紅色 - 在ROI內的物件
                 }
                 break;
             case functions::FALL:
                 label = string(obj.pose) + "_in roi: " + to_string(obj.in_roi_id);
                 if (string(obj.pose) == "falling" && obj.in_roi_id != -1){
-                    color = Scalar(0, 225, 225); // 黄色
+                    color = Scalar(0, 255, 255); // 黃色 - falling
                 }else if (string(obj.pose) == "fall" && obj.in_roi_id != -1) {
-                    color = Scalar(0, 0, 225); // 红色
+                    color = Scalar(0, 0, 255); // 紅色 - fall
                 }
                 break;
             case functions::CLIMB:
-                label = "object_" + to_string(obj.class_id);
+                label = to_string(obj.class_id);
                 if (string(obj.climb) == "climbing" && obj.in_roi_id != -1){
-                    color = Scalar(0, 225, 225); // 黄色
+                    color = Scalar(0, 255, 255); // 黃色 - climbing
                     label = "climbing_" + to_string(obj.class_id);
                 }else if (string(obj.climb) == "climb" && obj.in_roi_id != -1) {
-                    color = Scalar(0, 0, 225); // 红色
+                    color = Scalar(0, 0, 255); // 紅色 - climb
                     label = "climb_" + to_string(obj.class_id);
                 }
                 break;
@@ -607,11 +628,11 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     string engine_path1, engine_path2;
     switch (selected_function) {
         case functions::YOLO_COLOR:
-            engine_path1 = "weights/wheelchair_m_1.3.0.engine";
-            engine_path2 = "weights/wheelchair_m_1.3.0.engine";
+            engine_path1 = "weights/wheelchair_m_2.0.0.engine";
+            engine_path2 = "weights/wheelchair_m_2.0.0.engine";
             break;
         case functions::FALL:
-            engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+            engine_path1 = "weights/wheelchair_m_2.0.0.engine";
             engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
             break;
         case functions::CLIMB:
@@ -639,7 +660,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     if (is_video_file && user_rotation != 0) {
         cout << "Rotation: " << user_rotation << " degrees" << endl;
     }
-    cout << "按ESC键退出..." << endl;
+    cout << "按ESC退出..." << endl;
 
     // Open input source (RTSP stream or video file)
     VideoCapture cap(input_source);
@@ -706,7 +727,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     current_camera_id = camera_id;
 
     cout << "[INFO] Initializing " << getFunctionName(selected_function) << " model..." << endl;
-    svCreate_ObjectModules(selected_function, 1, engine_path1.c_str(), engine_path2.c_str(), 0.3f, log_file);
+    svCreate_ObjectModules(selected_function, 1, engine_path1.c_str(), engine_path2.c_str(), 0.5f, log_file);
 
     cout << "[INFO] Starting detection and display..." << endl;
 

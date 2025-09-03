@@ -1,5 +1,5 @@
 #include "fall_thread.h"
-#include "yolov11.h"
+#include "YOLOv11.h"
 #include "logging.h"
 #include "YUV420ToRGB.h"
 #include "Logger.h"
@@ -121,6 +121,7 @@ namespace fall {
         AILOG_INFO("Inference thread started.");
         cudaStream_t stream;
         CUDA_CHECK(cudaStreamCreate(&stream));
+        int frame_count = 0;
         while (!stopThread) {
             std::unique_lock<std::mutex> lock(inputQueueMutex);
 
@@ -133,6 +134,7 @@ namespace fall {
             // 從 inputQueue 中取出資料
             InputData input = inputQueue.front();
             inputQueue.pop();
+            frame_count++;
             lock.unlock();
             // 取得 GPU buffers
             uint8_t* gpu_yuv_buffer = GetYuvGpuBuffer(input.image_data, input.width, input.height);
@@ -190,23 +192,26 @@ namespace fall {
             std::vector<cv::Rect> wheelchair_boxes;
             for (int i = 0; i < count; ++i) {
                 const auto& det = detections[i];
-                if (det.class_id == model->wheelchair_class_id || det.class_id == model->person_on_wheelchair_class_id) {
+                if (det.class_id == static_cast<int>(CustomClass::WHEELCHAIR) ||
+                    det.class_id == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) {
                     // 計算輪椅框在原圖的座標
                     float x1 = (det.bbox.x - pad_x) / r;
                     float y1 = (det.bbox.y - pad_y) / r;
                     float x2 = (det.bbox.x + det.bbox.width - pad_x) / r;
                     float y2 = (det.bbox.y + det.bbox.height - pad_y) / r;
                     wheelchair_boxes.push_back(cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2)));
-                    AILOG_DEBUG("Wheelchair box detected: (" + std::to_string(x1) + "," + std::to_string(y1) +
+                    AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Wheelchair box detected: (" + std::to_string(x1) + "," + std::to_string(y1) +
                               ") to (" + std::to_string(x2) + "," + std::to_string(y2) + ")");
                 }
             }
 
             for (int i = 0; i < count; ++i) {
                 const auto& det = detections[i];
-                if (det.class_id != model->person_class_id && det.class_id != model->wheelchair_class_id && det.class_id != model->person_on_wheelchair_class_id) {
-                    continue; // 只處理人和輪椅
-                }
+                // if (det.class_id != static_cast<int>(CustomClass::PERSON) &&
+                //     det.class_id != static_cast<int>(CustomClass::WHEELCHAIR) &&
+                //     det.class_id != static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) {
+                //     continue; // 只處理人和輪椅
+                // }
                 // 模型輸出的 bbox 相對於 640x640，要先扣 padding 再除以 r
                 float x1 = (det.bbox.x - pad_x) / r;
                 float y1 = (det.bbox.y - pad_y) / r;
@@ -240,7 +245,7 @@ namespace fall {
                 strncpy(output[i].pose, "none", sizeof(output[i].pose) - 1);
                 output[i].pose[sizeof(output[i].pose) - 1] = '\0'; // 確保字串結尾
 
-                if (det.class_id != model->person_class_id) {
+                if (det.class_id != static_cast<int>(CustomClass::PERSON)) {
                     continue; // 跌倒分析只處理人
                 }
                 // 檢查人的中心是否在任何輪椅框內
@@ -259,7 +264,7 @@ namespace fall {
                 }
                 for (auto& roi_pair : *roi_map_ptr) {
                     ROI* roi_ptr = &roi_pair.second; // 指向原始數據
-                    if (det.class_id == model->person_class_id) {
+                    if (det.class_id == static_cast<int>(CustomClass::PERSON)) {
                         cv::Point bottom_middle = cv::Point(int((x1 + x2) / 2), int(y2));
                         // 確保 bottom_middle 在 mask 邊界內
                         if (bottom_middle.x >= 0 && bottom_middle.x < roi_ptr->mask.cols &&
@@ -276,7 +281,7 @@ namespace fall {
 
                             // 確保裁剪區域有效
                             if (crop_x2 <= crop_x1 || crop_y2 <= crop_y1) {
-                                AILOG_WARN("Invalid crop region for fall detection: (" +
+                                AILOG_WARN("frame:" + std::to_string(frame_count) + " Invalid crop region for fall detection: (" +
                                           std::to_string(crop_x1) + "," + std::to_string(crop_y1) + ") to (" +
                                           std::to_string(crop_x2) + "," + std::to_string(crop_y2) + ")");
                                 continue;
@@ -306,17 +311,17 @@ namespace fall {
                             // 如果人在輪椅內，跳過跌倒檢測
                             if (in_wheelchair) {
                                 max_index = STAND_CLASS; // 如果人在輪椅內，標記為坐在椅子上(stand)
-                                AILOG_DEBUG("Person in wheelchair, setting pose to STAND_CLASS");
+                                AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Person in wheelchair, setting pose to STAND_CLASS");
                             }
                             std::string fall_label = fall_classname[max_index];
                             if (max_index <= fall_index) {
                                 roi_ptr->alarm[0] = 1; // 設定此 frame 有人跌倒
                                 if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
                                     // 如果連續三個 frame 都有跌倒，則觸發警報
-                                    AILOG_INFO("Fall detected in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
+                                    AILOG_INFO("frame:" + std::to_string(frame_count) + " Fall detected in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
                                     fall_label = fall_classname[FALL_CLASS]; // 強制標記為跌倒
                                 }else {
-                                    AILOG_DEBUG("Fall voting in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
+                                    AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Fall voting in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
                                     fall_label = fall_classname[FALLING_CLASS]; // 跌倒投票中
                                 }
                             }
@@ -328,7 +333,7 @@ namespace fall {
                     }
                 }
             }
-            AILOG_DEBUG("Fall detection completed for camera " + std::to_string(input.camera_id) + ". Detections: " + std::to_string(count));
+            AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Fall detection completed for camera " + std::to_string(input.camera_id) + ". Detections: " + std::to_string(count));
             // 將結果放入 outputQueue
             int camera_id = input.camera_id;
             {

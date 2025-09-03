@@ -90,7 +90,7 @@ namespace YoloWithColor {
 
             // 再次檢查條件，避免虛假喚醒
             if (stopThread && inputQueue.empty()) {
-                AILOG_INFO("Stop signal received, exiting inference thread.");
+                AILOG_INFO("frame:" + std::to_string(frame_counter) + " Stop signal received, exiting inference thread.");
                 break;
             }
 
@@ -165,7 +165,7 @@ namespace YoloWithColor {
 
                 // 計算顏色
                 std::vector<std::vector<float>> box_points = {{0, 0, 1, 1}}; // 預設為整個 bbox
-                if (det.class_id == model->person_class_id)
+                if (det.class_id == static_cast<int>(CustomClass::PERSON))
                     box_points = {{0.14, 0.2, 0.78, 0.45}, {0.2, 0.5, 0.87, 0.8}}; // 如果類別是人則分上半身和下半身
                 std::vector<std::string> color_labels;
                 for (auto& point : box_points) {
@@ -208,7 +208,7 @@ namespace YoloWithColor {
                 output[i].class_id = det.class_id;
                 output[i].confidence = det.conf;
                 strncpy(output[i].color_label_first, color_labels[0].c_str(), sizeof(output[i].color_label_first) - 1);
-                if (det.class_id == model->person_class_id)
+                if (det.class_id == static_cast<int>(CustomClass::PERSON))
                     strncpy(output[i].color_label_second, color_labels[1].c_str(), sizeof(output[i].color_label_second) - 1);
                 output[i].color_label_first[sizeof(output[i].color_label_first) - 1] = '\0'; // 確保以空字元結尾
                 output[i].color_label_second[sizeof(output[i].color_label_second) - 1] = '\0'; // 確保以空字元結尾
@@ -221,15 +221,15 @@ namespace YoloWithColor {
                         bottom_middle.y >= 0 && bottom_middle.y < roi_pair.second.mask.rows &&
                         roi_pair.second.mask.at<uchar>(bottom_middle) != 0) {
                         output[i].in_roi_id = roi_pair.first;
-                        if (det.class_id == model->person_class_id) roi_people_count[roi_pair.first]++; // 增加該 ROI 的人數計數
-                        else if (det.class_id == model->person_on_wheelchair_class_id) {
+                        if (det.class_id == static_cast<int>(CustomClass::PERSON)) roi_people_count[roi_pair.first]++; // 增加該 ROI 的人數計數
+                        else if (det.class_id == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) {
                             AILOG_INFO("Object " + std::to_string(i) + " (class: person on wheelchair" +
                                     ") is in ROI " + std::to_string(roi_pair.first) + " for camera " + std::to_string(input.camera_id));
                         }
                     }
                 }
             }
-            std::string log_message = "Inference for camera " + std::to_string(input.camera_id) + " completed. Detections: " + std::to_string(count);
+            std::string log_message = "frame:" + std::to_string(frame_counter) + " Inference for camera " + std::to_string(input.camera_id) + " completed. Detections: " + std::to_string(count);
             for (const auto& roi_pair : roi_people_count) {
                 log_message += ", ROI " + std::to_string(roi_pair.first) + ": " + std::to_string(roi_pair.second) + " people";
             }
@@ -237,13 +237,13 @@ namespace YoloWithColor {
 
             // 應用目標追蹤
             if (input.camera_id < trackers.size() && crossing_line_map.size() > 0) {
-                AILOG_DEBUG("Starting tracking for camera " + std::to_string(input.camera_id) + " with " + std::to_string(count) + " detections");
+                AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " Starting tracking for camera " + std::to_string(input.camera_id) + " with " + std::to_string(count) + " detections");
                 try {
                     std::vector<TrackerDetection> tracker_detections;
                     int person_count = 0;
                     for (int i = 0; i < count; ++i) {
                         // 只對人類進行追蹤
-                        if (output[i].class_id == model->person_class_id) {
+                        if (output[i].class_id == static_cast<int>(CustomClass::PERSON)) {
                             float center_x = (output[i].bbox_xmin + output[i].bbox_xmax) / 2.0f;
                             // 將參考點改為上半部框的中心 (y座標向上移動1/8)
                             float bbox_height = output[i].bbox_ymax - output[i].bbox_ymin;
@@ -268,7 +268,7 @@ namespace YoloWithColor {
                     // 按順序分配追蹤ID給人類檢測
                     size_t tracker_detection_index = 0;
                     for (int i = 0; i < count; ++i) {
-                        if (output[i].class_id == model->person_class_id) {
+                        if (output[i].class_id == static_cast<int>(CustomClass::PERSON)) {
                             // 檢查是否還有可用的tracker_detection映射
                             if (tracker_detection_index < tracking_result.detection_to_track_id.size()) {
                                 int track_id = tracking_result.detection_to_track_id[tracker_detection_index];
@@ -296,7 +296,7 @@ namespace YoloWithColor {
                                                 if (dir != 0) {
                                                     output[i].crossing_line_id = roi_id;
                                                     output[i].crossing_line_direction = (dir == roi.in_area_direction[segment_idx]) ? 1 : -1;
-                                                    AILOG_INFO("Track ID " + std::to_string(track_id) +
+                                                    AILOG_INFO("frame:" + std::to_string(frame_counter) + " Track ID " + std::to_string(track_id) +
                                                               " crossed line segment " + std::to_string(segment_idx) +
                                                               " in ROI " + std::to_string(roi_id) +
                                                               ", direction: " + std::to_string(output[i].crossing_line_direction));
@@ -310,11 +310,11 @@ namespace YoloWithColor {
                             }
                         }
                     }
-                    AILOG_DEBUG("Camera " + std::to_string(input.camera_id) + " tracking: " +
+                    AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " Camera " + std::to_string(input.camera_id) + " tracking: " +
                               std::to_string(tracking_result.total_active_tracks) + " objects tracked");
                 }
                 catch (const std::exception& e) {
-                    AILOG_ERROR("Exception in tracking for camera " + std::to_string(input.camera_id) + ": " + std::string(e.what()));
+                    AILOG_ERROR("frame:" + std::to_string(frame_counter) + " Exception in tracking for camera " + std::to_string(input.camera_id) + ": " + std::string(e.what()));
                     // 如果追蹤失敗，給所有檢測設置無效的追蹤ID
                     for (int i = 0; i < count; ++i) {
                         output[i].track_id = -1;

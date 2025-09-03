@@ -1,5 +1,5 @@
 #include "yolov11_dll.h"
-#include "yolov11.h"
+#include "YOLOv11.h"
 #include "logging.h"
 #include "ColorClassifier.h"
 #include "YUV420ToRGB.h"
@@ -144,21 +144,6 @@ extern "C" {
 
     YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id,
         unsigned char* image_data, int width, int height, int channels, int max_output) {
-
-        // if (camera_function_roi_map.find(roi_id) != camera_function_roi_map.end()) {
-        //     ROI roi = camera_function_roi_map[roi_id];
-        //     if (roi.width != width || roi.height != height) {
-        //         AILOG_WARN("ROI size does not match input image size, creating new ROI.");
-        //         std::vector<cv::Point2f> points;
-        //         for (int i = 0; i < roi.points.size(); ++i) {
-        //             points.emplace_back(roi.points[i].x, roi.points[i].y);
-        //         }
-        //         cv::Mat mask = createROI(width, height, points);
-        //         camera_function_roi_map[roi_id] = {mask, points, width, height};
-        //     }
-        // }else {
-        //     AILOG_WARN("ROI with id " + std::to_string(roi_id) + " does not exist, ignoring.");
-        // }
         if (function == functions::YOLO_COLOR) {
             if (YoloWithColor::stopThread || camera_id >= YoloWithColor::outputQueues.size()) return -1;
             std::lock_guard<std::mutex> lock(YoloWithColor::inputQueueMutex);
@@ -195,6 +180,7 @@ extern "C" {
 
     YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait) {
         int count = 0;
+        OutputData result;
         if (function == functions::YOLO_COLOR) {
             if (YoloWithColor::stopThread || camera_id > YoloWithColor::outputQueues.size()) return -1;
             if (YoloWithColor::outputQueues[camera_id].empty()) {
@@ -209,12 +195,8 @@ extern "C" {
             else {
                 std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
             }
-            OutputData result = YoloWithColor::outputQueues[camera_id].front();
+            result = YoloWithColor::outputQueues[camera_id].front();
             YoloWithColor::outputQueues[camera_id].pop();
-            // 複製結果到輸出
-            count = std::min(result.count, max_output);
-            memcpy(output, result.output, count * sizeof(svObjData_t));
-            delete[] result.output; // 釋放記憶體
         }
         else if (function == functions::FALL) {
             if (fall::stopThread || camera_id > fall::outputQueues.size()) return -1;
@@ -230,12 +212,8 @@ extern "C" {
             else {
                 std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
             }
-            OutputData result = fall::outputQueues[camera_id].front();
+            result = fall::outputQueues[camera_id].front();
             fall::outputQueues[camera_id].pop();
-            // 複製結果到輸出
-            count = std::min(result.count, max_output);
-            memcpy(output, result.output, count * sizeof(svObjData_t));
-            delete[] result.output;
         }
         else if (function == functions::CLIMB) {
             if (climb::stopThread || camera_id > climb::outputQueues.size()) return -1;
@@ -251,16 +229,20 @@ extern "C" {
             else {
                 std::unique_lock<std::mutex> lock(*climb::outputQueueMutexes[camera_id]);
             }
-            OutputData result = climb::outputQueues[camera_id].front();
+            result = climb::outputQueues[camera_id].front();
             climb::outputQueues[camera_id].pop();
-            // 複製結果到輸出
-            count = std::min(result.count, max_output);
-            memcpy(output, result.output, count * sizeof(svObjData_t));
-            delete[] result.output;
         } else {
             AILOG_ERROR("Unknown function type: " + std::to_string(function));
             return -1;
         }
+        count = std::min(result.count, max_output);
+        // 將 Custom 類別 ID 映射到 COCO 類別 ID
+        for (int i = 0; i < count; ++i) {
+            int custom_class_id = result.output[i].class_id;
+            result.output[i].class_id = CUSTOM_to_COCO.at(custom_class_id);
+        }
+        memcpy(output, result.output, count * sizeof(svObjData_t));
+        delete[] result.output;
         return count; // 返回檢測到的物件數量
     }
 

@@ -4,6 +4,32 @@
 
 YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功能，支援多攝像頭同時處理、ROI 區域檢測、穿越線檢測和追蹤功能。
 
+## 版本訊息
+
+**當前版本**：1.1.0
+
+使用模型版本及threshold：
+ - YOLO_COLOR:
+    - model1: wheelchair_m_2.0.0.engine
+    - model2: wheelchair_m_2.0.0.engine
+    - threshold: 0.3
+ - FALL:
+    - model1: wheelchair_m_2.0.0.engine
+    - model2: yolo-fall4s-cls_1.6.1.engine
+    - threshold: 0.5
+ - CLIMB:
+    - model1: yolo11x-pose.engine.engine
+    - model2: yolo11x-pose.engine.engine
+    - threshold: 0.3
+
+更新內容：
+1. output.class_id 現在對應 80 類的 coco id，wheelchair 和 person_on_wheelchair 遞補到第 80 和 81，詳細參照下方的 #class_id 類別對應
+2. 攀爬的脊椎傾斜角度門檻由 20 度改為 10 度
+3. FALL 功能的建議 threshold 改為使用 0.5，需要在呼叫的時候傳入
+4. 修正了 BUG: 之前的版本為了節省運算使 FALL 的 output 除了 person、wheelchair、person_on_wheelchair 之外都會是 svObjData_t 的初始狀態而沒有正確資訊，修改過後所有 class 都有正常 output
+
+
+---
 ## 核心數據結構
 
 ### 函數類型枚舉
@@ -35,6 +61,50 @@ typedef struct svResultProjectObject_DataType {
 } svObjData_t;
 ```
 
+### class_id 類別對應
+
+檢測結果中的 `class_id` 已通過 CUSTOM_to_COCO 映射轉換為標準 COCO 類別編號：
+
+```
+0  - person
+1  - bicycle
+2  - car
+3  - motorcycle
+5  - bus
+6  - train
+13 - bench
+24 - backpack
+25 - umbrella
+26 - handbag
+28 - suitcase
+39 - bottle
+40 - wine_glass
+56 - chair
+57 - couch
+75 - vase
+80 - wheelchair
+81 - person_on_wheelchair
+```
+
+**重要說明**：
+- ⚠️ **v1.2.0 版本變更**：從此版本開始，`class_id` 使用標準 COCO 編號
+- ✅ **向下相容**：API 調用方式保持不變
+- 🔄 **用戶行動**：需要更新 `class_id` 的解析和顯示邏輯
+
+#### 常用類別快速參考
+```cpp
+// 常用的 COCO class_id
+const int PERSON = 0;              // 人員
+const int BICYCLE = 1;             // 腳踏車
+const int CAR = 2;                 // 汽車
+const int MOTORCYCLE = 3;          // 機車
+const int BUS = 5;                 // 公車
+const int TRAIN = 6;               // 火車
+const int WHEELCHAIR = 80;         // 輪椅
+const int PERSON_ON_WHEELCHAIR = 81; // 坐輪椅的人
+```
+
+```
 ## 核心 API 函數
 
 ### 1. 模型初始化
@@ -328,30 +398,6 @@ svRemove_MRTRedlightROI(camera_id, function_id, roi_id);
 release();
 ```
 
-## 版本訊息
-
-**當前版本**：1.0.2
-
-使用模型版本及threshold：
- - YOLO_COLOR:
-    - model1: wheelchair_m_1.3.0.engine
-    - model2: wheelchair_m_1.3.0.engine
-    - threshold: 0.3
- - FALL:
-    - model1: wheelchair_m_1.3.0.engine
-    - model2: yolo-fall4s-cls_1.6.1.engine
-    - threshold: 0.3
- - CLIMB:
-    - model1: yolo11x-pose.engine.engine
-    - model2: yolo11x-pose.engine.engine
-    - threshold: 0.3
-
-1.0.2更新內容：
-1. 跌倒偵測會輸出class9:輪椅和class10:坐輪椅的人
-2. 爬牆偵測的脊椎線傾斜條件從25度改成20度
-
-
----
 
 ## 完整範例參考
 

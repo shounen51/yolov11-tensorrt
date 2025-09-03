@@ -263,9 +263,9 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
 }
 
 int main() {
-    const char* yolo_engine_path1 = "weights/wheelchair_m_1.3.0.engine";
-    const char* yolo_engine_path2 = "weights/wheelchair_m_1.3.0.engine";
-    const char* fall_engine_path1 = "weights/wheelchair_m_1.3.0.engine";
+    const char* yolo_engine_path1 = "weights/wheelchair_m_1.5.0.engine";
+    const char* yolo_engine_path2 = "weights/wheelchair_m_1.5.0.engine";
+    const char* fall_engine_path1 = "weights/wheelchair_m_1.5.0.engine";
     const char* fall_engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
     const char* climb_engine_path1 = "weights/yolo11x-pose.engine";
     const char* climb_engine_path2 = "weights/yolo11x-pose.engine";

@@ -209,6 +209,7 @@ namespace climb {
         AILOG_INFO("Inference thread started.");
         cudaStream_t stream;
         CUDA_CHECK(cudaStreamCreate(&stream));
+        int frame_count = 0;
         while (!stopThread) {
             std::unique_lock<std::mutex> lock(inputQueueMutex);
 
@@ -221,6 +222,7 @@ namespace climb {
             // 從 inputQueue 中取出資料
             InputData input = inputQueue.front();
             inputQueue.pop();
+            frame_count++;
             lock.unlock();
             // 取得 GPU buffers
             uint8_t* gpu_yuv_buffer = GetYuvGpuBuffer(input.image_data, input.width, input.height);
@@ -356,15 +358,15 @@ namespace climb {
                 float angle_rad = atan2(abs(dx), abs(dy));  // 使用絕對值，只關心傾斜程度
                 float angle_deg = angle_rad * 180.0f / M_PI;  // 轉換為度數
 
-                // 只有當傾斜角度大於等於20度時才進行ROI相交判斷
-                if (angle_deg < 15.0f) {
+                // 只有當傾斜角度大於等於15度時才進行ROI相交判斷
+                if (angle_deg < 5.0f) {
                     continue;
                 }
-                else if (angle_deg < 20.0f) {
-                    AILOG_DEBUG("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical, but not enough for climb detection");
+                else if (angle_deg < 10.0f) {
+                    AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical, but not enough for climb detection");
                     continue;
                 }
-                AILOG_INFO("Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical");
+                AILOG_INFO("frame:" + std::to_string(frame_count) + " Shoulder-Hip line angle: " + std::to_string(angle_deg) + " degrees from vertical");
 
                 // 計算Shoulder到Hip的向量
                 float vectorX = norm_HipX - norm_ShoulderX;
@@ -418,13 +420,13 @@ namespace climb {
                                     in_roi = true;
                                     if (roi_ptr->alarm.count() > int(roi_ptr->alarm.size()/2)) {
                                         climb_label = climb_classname[CLIMB_CLASS];
-                                        AILOG_INFO("Climb detected: Shoulder-Hip line intersects with ROI " +
+                                        AILOG_INFO("frame:" + std::to_string(frame_count) + " Climb detected: Shoulder-Hip line intersects with ROI " +
                                                 std::to_string(roi_pair.first) + " edge from (" +
                                                 std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
                                                 std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
                                     }else {
                                         climb_label = climb_classname[CLIMBING_CLASS];
-                                        AILOG_DEBUG("Climb voting: Shoulder-Hip line intersects with ROI " +
+                                        AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Climb voting: Shoulder-Hip line intersects with ROI " +
                                                 std::to_string(roi_pair.first) + " edge from (" +
                                                 std::to_string(roi_point1.x) + "," + std::to_string(roi_point1.y) + ") to (" +
                                                 std::to_string(roi_point2.x) + "," + std::to_string(roi_point2.y) + ")");
@@ -450,7 +452,7 @@ namespace climb {
                 outputQueues[camera_id].push({output, count});
             }
             outputQueueConditions[camera_id]->notify_one(); // 通知等待的執行緒有新結果可用
-            AILOG_DEBUG("Climb detection completed for camera " + std::to_string(input.camera_id) + ", output count: " + std::to_string(count));
+            AILOG_DEBUG("frame:" + std::to_string(frame_count) + " Climb detection completed for camera " + std::to_string(input.camera_id) + ", output count: " + std::to_string(count));
 
         }
     }
