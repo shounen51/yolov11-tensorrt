@@ -6,29 +6,33 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 
 ## 版本訊息
 
-**當前版本**：1.1.0
+**當前版本**：1.1.1
 
-使用模型版本及threshold：
+模型名稱：
+ - detection_model
+ - fall_model
+ - pose_model
+
+使用 threshold：
  - YOLO_COLOR:
-    - model1: wheelchair_m_2.0.0.engine
-    - model2: wheelchair_m_2.0.0.engine
-    - threshold: 0.3
+    - threshold: 0.5
  - FALL:
-    - model1: wheelchair_m_2.0.0.engine
-    - model2: yolo-fall4s-cls_1.6.1.engine
     - threshold: 0.5
  - CLIMB:
-    - model1: yolo11x-pose.engine.engine
-    - model2: yolo11x-pose.engine.engine
+    - threshold: 0.3
+ - CROWD:
     - threshold: 0.3
 
 更新內容：
-1. output.class_id 現在對應 80 類的 coco id，wheelchair 和 person_on_wheelchair 遞補到第 80 和 81，詳細參照下方的 #class_id 類別對應
-2. 攀爬的脊椎傾斜角度門檻由 20 度改為 10 度
-3. FALL 功能的建議 threshold 改為使用 0.5，需要在呼叫的時候傳入
-4. 修正了 BUG: 之前的版本為了節省運算使 FALL 的 output 除了 person、wheelchair、person_on_wheelchair 之外都會是 svObjData_t 的初始狀態而沒有正確資訊，修改過後所有 class 都有正常 output
 
-
+1. 新增功能「CROWD」以偵測群聚人群，功能如下
+    - 不會輸出一般的框
+    - 必須繪製 roi 才可以進行偵測
+    - 偵測 roi 範圍內被人框覆蓋的百分比
+    - 當百分比超過 30% 時輸出一個與 roi 同大小、位置的人框，並且以 confidence 紀錄覆蓋的百分比，以 in_roi 紀錄計算的 roi_id
+2. 為了未來改版時可能只改模型不改 code，模型的讀取一律改用 symlink，當重新轉換 tensorrt 檔案後務必刪除舊的 model symlink，並且以新的 engine 檔案建立 symlink，建立方式是將 engine 檔案拖曳到「create_link.bat - 捷徑」中，輸入該 engine 的對應模型名稱即可
+3. FALL 功能的跌倒定義由「坐在地上+倒地」改為「倒地」，移除的姿勢包含低坐姿、低蹲姿，坐下往後撐地仍然是倒地姿勢
+3. 增加 log
 ---
 ## 核心數據結構
 
@@ -63,7 +67,7 @@ typedef struct svResultProjectObject_DataType {
 
 ### class_id 類別對應
 
-檢測結果中的 `class_id` 已通過 CUSTOM_to_COCO 映射轉換為標準 COCO 類別編號：
+檢測結果中的 `class_id` 已映射轉換為標準 COCO 類別編號：
 
 ```
 0  - person
@@ -86,10 +90,6 @@ typedef struct svResultProjectObject_DataType {
 81 - person_on_wheelchair
 ```
 
-**重要說明**：
-- ⚠️ **v1.2.0 版本變更**：從此版本開始，`class_id` 使用標準 COCO 編號
-- ✅ **向下相容**：API 調用方式保持不變
-- 🔄 **用戶行動**：需要更新 `class_id` 的解析和顯示邏輯
 
 #### 常用類別快速參考
 ```cpp

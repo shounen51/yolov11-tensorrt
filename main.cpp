@@ -263,9 +263,9 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
 }
 
 int main() {
-    const char* yolo_engine_path1 = "weights/wheelchair_m_1.5.0.engine";
-    const char* yolo_engine_path2 = "weights/wheelchair_m_1.5.0.engine";
-    const char* fall_engine_path1 = "weights/wheelchair_m_1.5.0.engine";
+    const char* yolo_engine_path1 = "weights/wheelchair_m_2.1.4.engine";
+    const char* yolo_engine_path2 = "weights/wheelchair_m_2.1.4.engine";
+    const char* fall_engine_path1 = "weights/wheelchair_m_2.1.4.engine";
     const char* fall_engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
     const char* climb_engine_path1 = "weights/yolo11x-pose.engine";
     const char* climb_engine_path2 = "weights/yolo11x-pose.engine";
@@ -276,13 +276,13 @@ int main() {
 
     // FPS settings for each thread
     int yolo_fps = 5;
-    int fall_fps = 5;
+    int fall_fps = 2;
     int climb_fps = 10;
 
     // Camera amount settings
-    int yolo_camera_amount = 10;  // Process cameras 0, 1, 2
-    int fall_camera_amount = 10;  // Process cameras 0, 1, 2
-    int climb_camera_amount = 10;  // Process cameras 0, 1, 2
+    int yolo_camera_amount = 30;  // Process cameras 0, 1, 2
+    int fall_camera_amount = 0;  // Process cameras 0, 1, 2
+    int climb_camera_amount = 0;  // Process cameras 0, 1, 2
 
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;

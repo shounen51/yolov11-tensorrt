@@ -2,6 +2,7 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
 #include <chrono>
+#include <algorithm>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -45,7 +46,7 @@ vector<Point2f> redlight_clicked_points;  // Store redlight ROI points
 bool redlight_close_polygon = false;
 int next_redlight_roi_id = 0;  // For assigning redlight ROI IDs
 
-// Store created redlight ROIs for display
+// Store created redlight rois for display
 vector<vector<Point2f>> created_redlight_rois;  // Store all created redlight ROI polygons
 
 // Crossing line variables
@@ -59,6 +60,11 @@ int rotation_type = ROTATE_180;  // Default to 180 degree rotation for upside-do
 
 // Global variables for cumulative red box counting
 int total_red_box_count = 0;  // Cumulative count of red boxes
+
+// FALL cooldown mechanism
+chrono::steady_clock::time_point last_fall_alert_time;
+bool fall_cooldown_active = false;
+const int FALL_COOLDOWN_SECONDS = 5;
 
 // Function to auto-correct frame orientation
 Mat correctFrameOrientation(const Mat& input_frame, bool check_orientation = false, int user_rotation = 0) {
@@ -264,6 +270,7 @@ functions parseFunction(const string& func_str) {
     if (func_str == "YOLO_COLOR" || func_str == "yolo") return functions::YOLO_COLOR;
     if (func_str == "FALL" || func_str == "fall") return functions::FALL;
     if (func_str == "CLIMB" || func_str == "climb") return functions::CLIMB;
+    if (func_str == "CROWD" || func_str == "crowd") return functions::CROWD; // Added CROWD
     return functions::YOLO_COLOR; // default
 }
 
@@ -273,6 +280,7 @@ const char* getFunctionName(functions func) {
         case functions::YOLO_COLOR: return "YOLO_COLOR";
         case functions::FALL: return "FALL";
         case functions::CLIMB: return "CLIMB";
+        case functions::CROWD: return "CROWD"; // Added CROWD
         default: return "UNKNOWN";
     }
 }
@@ -281,11 +289,12 @@ void printUsage(const char* program_name) {
     cout << "\n=== RTSP 偵測系統 ===" << endl;
     cout << "用法: " << program_name << " <function> <input_source> <log_file> [target_fps] [rotation]" << endl;
     cout << "\n參數:" << endl;
-    cout << "  function      偵測功能 (yolo|fall|climb)" << endl;
+    cout << "  function      偵測功能 (yolo|fall|climb|crowd)" << endl; // Added crowd in usage
     cout << "  input_source  RTSP串流地址或影片檔案路徑" << endl;
     cout << "  log_file      日誌檔案路徑" << endl;
     cout << "  target_fps    可選：目標FPS (跳幀處理，如5表示每秒處理5幀)" << endl;
     cout << "  rotation      可選：影片旋轉角度 (0|90|180|270)" << endl;
+    cout << "  wait_time     可選：顯示延遲(毫秒)，若提供則直接使用該值而不再自動計算" << endl;
     cout << "\n範例:" << endl;
     cout << "  " << program_name << " yolo rtsp://admin:admin123@192.168.1.100:554/stream1 log/log.log" << endl;
     cout << "  " << program_name << " fall rtsp://192.168.1.100:8554/stream log/fall.log" << endl;
@@ -503,7 +512,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     for (int i = 0; i < num_objects; i++) {
         const auto& obj = results[i];
-        if (obj.class_id != 0 && obj.class_id != 3 && obj.class_id != 80 && obj.class_id != 81) continue; // Skip non-person objects
+        // if (obj.class_id != 0 && obj.class_id != 3 && obj.class_id != 80 && obj.class_id != 81) continue; // Skip non-person objects
 
         // 将归一化坐标 (0~1) 转换为像素坐标
         int x1 = static_cast<int>(obj.bbox_xmin * frame_width);
@@ -567,6 +576,14 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                     label = "climb_" + to_string(obj.class_id);
                 }
                 break;
+            case functions::CROWD: { // New CROWD label logic using confidence
+                char buf[64];
+                snprintf(buf, sizeof(buf), "crowd %.2f", obj.confidence);
+                label = string(buf);
+                // Use red if ROI triggered, else green
+                if (obj.in_roi_id != -1) color = Scalar(0,0,255); else color = Scalar(0,255,0);
+                break;
+            }
         }
 
         // 画边界框
@@ -617,7 +634,13 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     int user_rotation = 0;  // Default: no rotation
     if (argc >= 6) {
         user_rotation = stoi(argv[5]);
-    }    // Parse function type
+    }
+    // Parse optional wait_time override (milliseconds)
+    int custom_wait_time = -1; // -1 means not provided
+    if (argc >= 7) {
+        try { custom_wait_time = max(1, stoi(argv[6])); } catch(...) { custom_wait_time = -1; }
+    }
+    // Parse function type
     functions selected_function = parseFunction(function_str);
 
     // Determine if input is RTSP stream or video file
@@ -628,16 +651,20 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     string engine_path1, engine_path2;
     switch (selected_function) {
         case functions::YOLO_COLOR:
-            engine_path1 = "weights/wheelchair_m_2.0.0.engine";
-            engine_path2 = "weights/wheelchair_m_2.0.0.engine";
+            engine_path1 = "weights/detection_model";
+            engine_path2 = "weights/detection_model";
             break;
         case functions::FALL:
-            engine_path1 = "weights/wheelchair_m_2.0.0.engine";
-            engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
+            engine_path1 = "weights/detection_model";
+            engine_path2 = "weights/fall_model";
             break;
         case functions::CLIMB:
-            engine_path1 = "weights/yolo11x-pose.engine";
-            engine_path2 = "weights/yolo11x-pose.engine";
+            engine_path1 = "weights/pose_model";
+            engine_path2 = "weights/pose_model";
+            break;
+        case functions::CROWD:
+            engine_path1 = "weights/detection_model";
+            engine_path2 = "weights/detection_model";
             break;
     }
 
@@ -659,6 +686,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     }
     if (is_video_file && user_rotation != 0) {
         cout << "Rotation: " << user_rotation << " degrees" << endl;
+    }
+    if (custom_wait_time > 0) {
+        cout << "Custom wait_time (ms): " << custom_wait_time << endl;
     }
     cout << "按ESC退出..." << endl;
 
@@ -708,8 +738,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
     // Get screen size and calculate window size (1/4 of screen)
     Size screen_size = getScreenSize();
-    int window_width = screen_size.width / 2;   // 1/2 width
-    int window_height = screen_size.height / 2; // 1/2 height (total = 1/4 area)
+    int window_width = screen_size.width;   // 1/2 width
+    int window_height = screen_size.height; // 1/2 height (total = 1/4 area)
     cout << "[INFO] Screen size: " << screen_size.width << "x" << screen_size.height << endl;
     cout << "[INFO] Window size: " << window_width << "x" << window_height << endl;
 
@@ -808,7 +838,6 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             cerr << "[INFO] Detection stopped" << endl;
             break;
         }
-
         auto end_time = chrono::high_resolution_clock::now();
         auto inference_time = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
 
@@ -817,19 +846,20 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
 
         // Count red bounding boxes (objects in ROI)
         int red_box_count = 0;
+        bool fall_detected = false;
         for (int i = 0; i < num_objects; i++) {
             const auto& obj = results[i];
 
             // Count objects that trigger red boxes (in ROI)
             switch (selected_function) {
                 case functions::YOLO_COLOR:
-                    if (obj.in_roi_id != -1) {
-                        // red_box_count += obj.crossing_line_direction;
+                    if (obj.in_roi_id != -1 && obj.class_id == 0) {
                         red_box_count++;
                     }
                     break;
                 case functions::FALL:
                     if (string(obj.pose) == "fall" && obj.in_roi_id != -1) {
+                        fall_detected = true;
                         red_box_count++;
                     }
                     break;
@@ -838,19 +868,63 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                         red_box_count++;
                     }
                     break;
+                case functions::CROWD: // For CROWD, count each ROI output (already one per ROI > threshold)
+                    if (obj.in_roi_id != -1) red_box_count++;
+                    break;
             }
         }
 
-        // Add to cumulative count
-        total_red_box_count += red_box_count;
+        // Handle FALL cooldown logic
+        if (selected_function == functions::FALL && fall_detected) {
+            auto current_time = chrono::steady_clock::now();
+
+            if (!fall_cooldown_active) {
+                // First fall detection, start cooldown
+                fall_cooldown_active = true;
+                last_fall_alert_time = current_time;
+                total_red_box_count += red_box_count;  // Count this detection
+            } else {
+                // Check if cooldown period has expired
+                auto time_since_last_alert = chrono::duration_cast<chrono::seconds>(current_time - last_fall_alert_time).count();
+
+                if (time_since_last_alert >= FALL_COOLDOWN_SECONDS) {
+                    // Cooldown expired, count this detection and restart cooldown
+                    fall_cooldown_active = true;
+                    last_fall_alert_time = current_time;
+                    total_red_box_count += red_box_count;
+                } else {
+                    // Still in cooldown, reset cooldown timer but don't count
+                    last_fall_alert_time = current_time;
+                    red_box_count = 0;  // Don't add to display count during cooldown
+                }
+            }
+        } else if (selected_function == functions::FALL && !fall_detected && fall_cooldown_active) {
+            // Check if cooldown should be cleared
+            auto current_time = chrono::steady_clock::now();
+            auto time_since_last_alert = chrono::duration_cast<chrono::seconds>(current_time - last_fall_alert_time).count();
+
+            if (time_since_last_alert >= FALL_COOLDOWN_SECONDS) {
+                fall_cooldown_active = false;
+            }
+        } else if (selected_function != functions::FALL) {
+            // For non-FALL functions, add to cumulative count normally
+            total_red_box_count += red_box_count;
+        }
 
         // Display cumulative red box count in red text
-        // string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
-        // putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
+        string cumulative_text = "Total Alert Count: " + to_string(total_red_box_count);
+        putText(frame_bgr, cumulative_text, Point(10, 100), FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0, 0, 255), 2);
 
 
         // Display current frame red box count if any
         string current_text = "Current: " + to_string(red_box_count);
+        if (selected_function == functions::FALL && fall_cooldown_active) {
+            auto current_time = chrono::steady_clock::now();
+            auto remaining_cooldown = FALL_COOLDOWN_SECONDS - chrono::duration_cast<chrono::seconds>(current_time - last_fall_alert_time).count();
+            if (remaining_cooldown > 0) {
+                current_text += " (Cooldown: " + to_string(remaining_cooldown) + "s)";
+            }
+        }
         putText(frame_bgr, current_text, Point(10, 135), FONT_HERSHEY_SIMPLEX, 0.6, Scalar(0, 0, 255), 2);
 
         // Add frame counter and progress for video files
@@ -869,16 +943,19 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         // Display frame
         imshow(window_name, display_frame);
 
-        // For video files, add delay to maintain target frame rate (subtract processing time)
+        // For video files, add delay to maintain target frame rate (subtract processing time) unless custom_wait_time provided
         int wait_time = 1;
-        if (is_video_file && target_fps > 0) {
-            int target_frame_time = int(1000.0 / target_fps);  // Target time per frame in ms
-            wait_time = max(1, target_frame_time - static_cast<int>(inference_time));
-        } else if (is_video_file && fps > 0) {
-            int original_frame_time = int(1000.0 / fps);  // Original time per frame in ms
-            wait_time = max(1, original_frame_time - static_cast<int>(inference_time));
+        if (custom_wait_time > 0) {
+            wait_time = custom_wait_time; // Direct override
+        } else {
+            if (is_video_file && target_fps > 0) {
+                int target_frame_time = int(1000.0 / target_fps);  // Target time per frame in ms
+                wait_time = max(1, target_frame_time - static_cast<int>(inference_time));
+            } else if (is_video_file && fps > 0) {
+                int original_frame_time = int(1000.0 / fps);  // Original time per frame in ms
+                wait_time = max(1, original_frame_time - static_cast<int>(inference_time));
+            }
         }
-
         // Check for key presses
         char key = waitKey(wait_time) & 0xFF;
         if (key == 27) { // ESC key

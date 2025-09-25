@@ -2,6 +2,12 @@
 #include <string>
 #include <memory>
 
+// Logger configuration constants
+namespace LoggerConfig {
+    constexpr std::uintmax_t MAX_LOG_FILE_SIZE = 512 * 1024 * 1024;  // 512MB
+    constexpr int MAX_LOG_FILES = 200;  // Maximum number of log files to keep
+}
+
 enum class LogLevel { DEBUG, INFO, WARN, ERROR };
 
 class AILogger {

@@ -7,6 +7,7 @@
 #include "detection_color_thread.h"
 #include "fall_thread.h"
 #include "climb_thread.h"
+#include "crowd_thread.h"
 #include <cuda_utils.h>
 #include <memory>
 #include <opencv2/opencv.hpp>
@@ -108,142 +109,177 @@ extern "C" {
         if (std::string(logFilePath) == "") {
             AILOG_INFO("No log file path specified, using default console logging.");
             AILogger::setConsoleOnly(true); // 如果沒有指定 logFilePath，則只輸出到 console
-        }
-        else {
+        } else {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
-        if (function == functions::YOLO_COLOR) {
-            if (!checkFileExists(std::string(engine_path1))) {
-                AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
-                return;
+        switch (function) {
+            case functions::YOLO_COLOR: {
+                if (!checkFileExists(std::string(engine_path1))) {
+                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                    return;
+                }
+                AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path1));
+                YoloWithColor::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+                break;
             }
-            AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path1));
-            YoloWithColor::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
-        }
-        else if (function == functions::FALL) {
-            if (!checkFileExists(std::string(engine_path1))) {
-                AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
-                return;
+            case functions::FALL: {
+                if (!checkFileExists(std::string(engine_path1))) {
+                    AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
+                    return;
+                }
+                if (!checkFileExists(std::string(engine_path2))) {
+                    AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
+                    return;
+                }
+                AILOG_INFO("Initializing Fall Detection model with engine: " + std::string(engine_path1) + " and " + std::string(engine_path2));
+                fall::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
+                break;
             }
-            if (!checkFileExists(std::string(engine_path2))) {
-                AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
-                return;
+            case functions::CLIMB: {
+                if (!checkFileExists(std::string(engine_path1))) {
+                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                    return;
+                }
+                AILOG_INFO("Initializing Climb Detection model with engine: " + std::string(engine_path1));
+                climb::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+                break;
             }
-            AILOG_INFO("Initializing Fall Detection model with engine: " + std::string(engine_path1) + " and " + std::string(engine_path2));
-            fall::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
-        }
-        else if (function == functions::CLIMB) {
-            if (!checkFileExists(std::string(engine_path1))) {
-                AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
-                return;
+            case functions::CROWD: {
+                if (!checkFileExists(std::string(engine_path1))) {
+                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                    return;
+                }
+                AILOG_INFO("Initializing Crowd Detection model with engine: " + std::string(engine_path1));
+                Crowd::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+                break;
             }
-            AILOG_INFO("Initializing Climb Detection model with engine: " + std::string(engine_path1));
-            climb::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+            default: {
+                AILOG_ERROR("Unknown function type: " + std::to_string(function));
+                break;
+            }
         }
     }
 
     YOLOV11_API int svObjectModules_inputImageYUV(int function, int camera_id,
         unsigned char* image_data, int width, int height, int channels, int max_output) {
-        if (function == functions::YOLO_COLOR) {
-            if (YoloWithColor::stopThread || camera_id >= YoloWithColor::outputQueues.size()) return -1;
-            std::lock_guard<std::mutex> lock(YoloWithColor::inputQueueMutex);
-            YoloWithColor::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
-            YoloWithColor::inputQueueCondition.notify_one();
-            if (YoloWithColor::inputQueue.size() > 100)
-                AILOG_WARN("Input queue size exceeds 100, input too fast.");
-            return YoloWithColor::inputQueue.size();
+        switch (function) {
+            case functions::YOLO_COLOR: {
+                if (YoloWithColor::stopThread || camera_id >= YoloWithColor::outputQueues.size()) return -1;
+                std::lock_guard<std::mutex> lock(YoloWithColor::inputQueueMutex);
+                YoloWithColor::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
+                YoloWithColor::inputQueueCondition.notify_one();
+                if (YoloWithColor::inputQueue.size() > 100)
+                    AILOG_WARN("Input queue size exceeds 100, input too fast.");
+                return (int)YoloWithColor::inputQueue.size();
+            }
+            case functions::FALL: {
+                if (fall::stopThread || camera_id >= fall::outputQueues.size()) return -1;
+                std::lock_guard<std::mutex> lock(fall::inputQueueMutex);
+                fall::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
+                fall::inputQueueCondition.notify_one();
+                if (fall::inputQueue.size() > 100)
+                    AILOG_WARN("Input queue size exceeds 100, input too fast.");
+                return (int)fall::inputQueue.size();
+            }
+            case functions::CLIMB: {
+                if (climb::stopThread || camera_id >= climb::outputQueues.size()) return -1;
+                std::lock_guard<std::mutex> lock(climb::inputQueueMutex);
+                climb::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
+                climb::inputQueueCondition.notify_one();
+                if (climb::inputQueue.size() > 100)
+                    AILOG_WARN("Input queue size exceeds 100, input too fast.");
+                return (int)climb::inputQueue.size();
+            }
+            case functions::CROWD: {
+                if (Crowd::stopThread || camera_id >= Crowd::outputQueues.size()) return -1;
+                std::lock_guard<std::mutex> lock(Crowd::inputQueueMutex);
+                Crowd::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
+                Crowd::inputQueueCondition.notify_one();
+                if (Crowd::inputQueue.size() > 100)
+                    AILOG_WARN("Input queue size exceeds 100, input too fast.");
+                return (int)Crowd::inputQueue.size();
+            }
+            default: {
+                AILOG_ERROR("Unknown function type: " + std::to_string(function));
+                return -1;
+            }
         }
-        else if (function == functions::FALL) {
-            if (fall::stopThread || camera_id >= fall::outputQueues.size()) return -1;
-            std::lock_guard<std::mutex> lock(fall::inputQueueMutex);
-            fall::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
-            fall::inputQueueCondition.notify_one();
-            if (fall::inputQueue.size() > 100)
-                AILOG_WARN("Input queue size exceeds 100, input too fast.");
-            return fall::inputQueue.size();
-        }
-        else if (function == functions::CLIMB) {
-            if (climb::stopThread || camera_id >= climb::outputQueues.size()) return -1;
-            std::lock_guard<std::mutex> lock(climb::inputQueueMutex);
-            climb::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
-            climb::inputQueueCondition.notify_one();
-            if (climb::inputQueue.size() > 100)
-                AILOG_WARN("Input queue size exceeds 100, input too fast.");
-            return climb::inputQueue.size();
-        }
-        else {
-            AILOG_ERROR("Unknown function type: " + std::to_string(function));
-            return -1;
-        }
-        return 1;
     }
 
     YOLOV11_API int svObjectModules_getResult(int function, int camera_id, svObjData_t* output, int max_output, bool wait) {
         int count = 0;
-        OutputData result;
-        if (function == functions::YOLO_COLOR) {
-            if (YoloWithColor::stopThread || camera_id > YoloWithColor::outputQueues.size()) return -1;
-            if (YoloWithColor::outputQueues[camera_id].empty()) {
-                if (wait) { // 等待直到有結果可用
+        OutputData result{};
+        switch (function) {
+            case functions::YOLO_COLOR: {
+                if (YoloWithColor::stopThread || camera_id > YoloWithColor::outputQueues.size()) return -1;
+                if (YoloWithColor::outputQueues[camera_id].empty()) {
+                    if (wait) {
+                        std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
+                        YoloWithColor::outputQueueConditions[camera_id]->wait(lock, [&] { return !YoloWithColor::outputQueues[camera_id].empty() || YoloWithColor::stopThread; });
+                    } else return -1;
+                } else {
                     std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
-                    YoloWithColor::outputQueueConditions[camera_id]->wait(lock, [&] { return !YoloWithColor::outputQueues[camera_id].empty() || YoloWithColor::stopThread; });
                 }
-                else {
-                    return -1; // 如果不等待且沒有結果，則返回 -1
-                }
+                result = YoloWithColor::outputQueues[camera_id].front();
+                YoloWithColor::outputQueues[camera_id].pop();
+                break;
             }
-            else {
-                std::unique_lock<std::mutex> lock(*YoloWithColor::outputQueueMutexes[camera_id]);
-            }
-            result = YoloWithColor::outputQueues[camera_id].front();
-            YoloWithColor::outputQueues[camera_id].pop();
-        }
-        else if (function == functions::FALL) {
-            if (fall::stopThread || camera_id > fall::outputQueues.size()) return -1;
-            if (fall::outputQueues[camera_id].empty()) {
-                if (wait) { // 等待直到有結果可用
+            case functions::FALL: {
+                if (fall::stopThread || camera_id > fall::outputQueues.size()) return -1;
+                if (fall::outputQueues[camera_id].empty()) {
+                    if (wait) {
+                        std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
+                        fall::outputQueueConditions[camera_id]->wait(lock, [&] { return !fall::outputQueues[camera_id].empty() || fall::stopThread; });
+                    } else return -1;
+                } else {
                     std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
-                    fall::outputQueueConditions[camera_id]->wait(lock, [&] { return !fall::outputQueues[camera_id].empty() || fall::stopThread; });
                 }
-                else {
-                    return -1; // 如果不等待且沒有結果，則返回 -1
-                }
+                result = fall::outputQueues[camera_id].front();
+                fall::outputQueues[camera_id].pop();
+                break;
             }
-            else {
-                std::unique_lock<std::mutex> lock(*fall::outputQueueMutexes[camera_id]);
-            }
-            result = fall::outputQueues[camera_id].front();
-            fall::outputQueues[camera_id].pop();
-        }
-        else if (function == functions::CLIMB) {
-            if (climb::stopThread || camera_id > climb::outputQueues.size()) return -1;
-            if (climb::outputQueues[camera_id].empty()) {
-                if (wait) { // 等待直到有結果可用
+            case functions::CLIMB: {
+                if (climb::stopThread || camera_id > climb::outputQueues.size()) return -1;
+                if (climb::outputQueues[camera_id].empty()) {
+                    if (wait) {
+                        std::unique_lock<std::mutex> lock(*climb::outputQueueMutexes[camera_id]);
+                        climb::outputQueueConditions[camera_id]->wait(lock, [&] { return !climb::outputQueues[camera_id].empty() || climb::stopThread; });
+                    } else return -1;
+                } else {
                     std::unique_lock<std::mutex> lock(*climb::outputQueueMutexes[camera_id]);
-                    climb::outputQueueConditions[camera_id]->wait(lock, [&] { return !climb::outputQueues[camera_id].empty() || climb::stopThread; });
                 }
-                else {
-                    return -1; // 如果不等待且沒有結果，則返回 -1
+                result = climb::outputQueues[camera_id].front();
+                climb::outputQueues[camera_id].pop();
+                break;
+            }
+            case functions::CROWD: {
+                if (Crowd::stopThread || camera_id > Crowd::outputQueues.size()) return -1;
+                if (Crowd::outputQueues[camera_id].empty()) {
+                    if (wait) {
+                        std::unique_lock<std::mutex> lock(*Crowd::outputQueueMutexes[camera_id]);
+                        Crowd::outputQueueConditions[camera_id]->wait(lock, [&] { return !Crowd::outputQueues[camera_id].empty() || Crowd::stopThread; });
+                    } else return -1;
+                } else {
+                    std::unique_lock<std::mutex> lock(*Crowd::outputQueueMutexes[camera_id]);
                 }
+                result = Crowd::outputQueues[camera_id].front();
+                Crowd::outputQueues[camera_id].pop();
+                break;
             }
-            else {
-                std::unique_lock<std::mutex> lock(*climb::outputQueueMutexes[camera_id]);
+            default: {
+                AILOG_ERROR("Unknown function type: " + std::to_string(function));
+                return -1;
             }
-            result = climb::outputQueues[camera_id].front();
-            climb::outputQueues[camera_id].pop();
-        } else {
-            AILOG_ERROR("Unknown function type: " + std::to_string(function));
-            return -1;
         }
         count = std::min(result.count, max_output);
-        // 將 Custom 類別 ID 映射到 COCO 類別 ID
         for (int i = 0; i < count; ++i) {
             int custom_class_id = result.output[i].class_id;
             result.output[i].class_id = CUSTOM_to_COCO.at(custom_class_id);
         }
         memcpy(output, result.output, count * sizeof(svObjData_t));
         delete[] result.output;
-        return count; // 返回檢測到的物件數量
+        AILOG_DEBUG("Returned " + std::to_string(count) + " objects for camera " + std::to_string(camera_id) + " in function " + std::to_string(function));
+        return count;
     }
 
     YOLOV11_API void svCreate_ROI(int camera_id, int function_id, int roi_id, int width, int height, float* points_x, float* points_y, int point_count) {
@@ -442,6 +478,16 @@ extern "C" {
             climb::inferenceThread.join();
         }
         AILOG_INFO("Climb detection thread stopped and resources cleared.");
+        // 清理 Crowd Detection 資源 (新增)
+        Crowd::stopThread = true;
+        Crowd::inputQueueCondition.notify_all();
+        for (auto& cv : Crowd::outputQueueConditions) {
+            cv->notify_all();
+        }
+        if (Crowd::inferenceThread.joinable()) {
+            Crowd::inferenceThread.join();
+        }
+        AILOG_INFO("Crowd detection thread stopped and resources cleared.");
 
         // 清理所有 ROI 和穿越線資源
         camera_function_roi_map.clear();

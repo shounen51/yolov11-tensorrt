@@ -116,7 +116,8 @@ typedef struct OutputData {
 enum functions {
     YOLO_COLOR = 0,
     FALL = 1,
-    CLIMB = 2
+    CLIMB = 2,
+    CROWD = 3
 };
 
 /**

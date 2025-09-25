@@ -151,8 +151,10 @@ namespace fall {
             cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data()); // for fall detection crop person image
             // 等待 preprocess 完成
             model->joinGPUStream();
+            AILOG_DEBUG("frame:" + std::to_string(frame_count) + " preprocess done");
             model->infer();
             model->postprocess(detections);
+            AILOG_DEBUG("frame:" + std::to_string(frame_count) + " postprocess done");
 
             int count = std::min(static_cast<int>(detections.size()), input.max_output);
 

@@ -173,11 +173,11 @@ void YOLOv11::postprocess(vector<Detection>& output)
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
 
-            if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == static_cast<int>(CustomClass::PERSON)) {
-                // filter out large boxes
-                AILOG_INFO("Filter out large person box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
-                continue;
-            }
+            // if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == static_cast<int>(CustomClass::PERSON)) {
+            //     // filter out large boxes
+            //     AILOG_DEBUG("Filter out large person box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
+            //     continue;
+            // }
             if (class_id_point.y == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) { // pw special
                 boxes_pw.push_back(box); // pw special
                 class_ids_pw.push_back(class_id_point.y); // pw special
@@ -239,8 +239,18 @@ void YOLOv11::postprocess(vector<Detection>& output)
 
         // 如果包含超過2個人框中心，則跳過這個檢測
         if (person_count_in_box > 2) {
-            AILOG_INFO("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
-                      std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
+            if (person_count_in_box > 8) {
+                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
+                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height) + " high crowded");
+            }
+            else if (person_count_in_box > 5) {
+                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
+                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height) + " medium crowded");
+            }
+            else if (person_count_in_box > 2) {
+                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
+                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
+            }
             continue;
         }
 
@@ -255,23 +265,6 @@ void YOLOv11::postprocess(vector<Detection>& output)
     for (int i = 0; i < nms_result_pw.size(); i++) // pw special
     {
         int idx = nms_result_pw[i];
-        Rect current_box = boxes_pw[idx];
-
-        // 計算當前框中包含多少個人框中心
-        int person_count_in_box = 0;
-        for (const Point& center : person_centers) {
-            if (current_box.contains(center)) {
-                person_count_in_box++;
-            }
-        }
-
-        // 如果包含超過2個人框中心，則跳過這個檢測
-        if (person_count_in_box > 2) {
-            AILOG_INFO("Filter out person_on_wheelchair box containing " + std::to_string(person_count_in_box) +
-                      " person centers: " + std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
-            continue;
-        }
-
         Detection result;
         result.class_id = class_ids_pw[idx]; // pw special
         result.conf = confidences_pw[idx]; // pw special
@@ -287,6 +280,7 @@ void YOLOv11::postprocess(vector<Detection>& output)
         result.bbox = boxes_w[idx]; // pw special
         output.push_back(result); // pw special
     } // pw special
+    AILOG_DEBUG("Postprocess found " + std::to_string(output.size()) + " objects");
 }
 
 void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)

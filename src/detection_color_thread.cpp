@@ -114,9 +114,10 @@ namespace YoloWithColor {
             cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
             // 等待 preprocess 完成
             model->joinGPUStream();
+            AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " preprocess done");
             model->infer();
             model->postprocess(detections);
-
+            AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " postprocess done");
             int count = std::min(static_cast<int>(detections.size()), input.max_output);
 
             // YOLO input size（根據模型固定）

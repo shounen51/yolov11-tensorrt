@@ -23,7 +23,7 @@ void AILogger::setConsoleOnly(bool enable) {
 class AILogger::Impl {
 public:
     Impl(const std::string& logFilePath)
-        : logFilePath_(logFilePath), maxFileSize_(512 * 1024 * 1024) // 512MB
+        : logFilePath_(logFilePath), maxFileSize_(LoggerConfig::MAX_LOG_FILE_SIZE)
     {
         std::filesystem::path logPath(logFilePath_);
         if (logPath.has_parent_path()) {
@@ -64,10 +64,8 @@ private:
         if (!ec && size >= maxFileSize_) {
             logFile.close();
 
-            const int maxLogFiles = 200; // 可調整的保留檔案數量
-
             // 只刪除最舊的檔案，然後將當前檔案移動到 .1
-            std::string oldestFile = logFilePath_ + "." + std::to_string(maxLogFiles);
+            std::string oldestFile = logFilePath_ + "." + std::to_string(LoggerConfig::MAX_LOG_FILES);
             std::filesystem::remove(oldestFile, ec); // 刪除最舊的檔案
 
             // 將當前檔案重命名為帶時間戳的檔案名，避免大量重命名操作
@@ -86,8 +84,8 @@ private:
 
             std::filesystem::rename(logFilePath_, timestampedFile, ec);
 
-            // 清理舊檔案：保持檔案數量不超過 maxLogFiles
-            cleanupOldLogFiles(maxLogFiles);
+            // 清理舊檔案：保持檔案數量不超過 LoggerConfig::MAX_LOG_FILES
+            cleanupOldLogFiles(LoggerConfig::MAX_LOG_FILES);
 
             openLogFile();
         }

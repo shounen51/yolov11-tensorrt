@@ -298,9 +298,6 @@ namespace climb {
                 for (auto& roi_pair : *roi_map_ptr) {
                     roi_ptr = &roi_pair.second; // 取得指針，指向原始數據
                     roi_ptr->alarm <<= 1; // 左移一位，丟棄最舊的警報
-                    // for (int j = 0; j < roi_ptr->alarm.size(); ++j) {
-                        // AILOG_DEBUG("ROI alarm[" + std::to_string(j) + "]: " + std::to_string(roi_ptr->alarm[j]));
-                    // }
                 }
             }
 
@@ -338,6 +335,7 @@ namespace climb {
                 output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字串結尾
 
                 if (skip_climb_detection) {
+                    AILOG_INFO("frame:" + std::to_string(frame_count) + " Skipping climb detection");
                     continue; // 跳過爬牆偵測
                 }
 
@@ -386,15 +384,15 @@ namespace climb {
                     float extendedShoulderX = norm_ShoulderX - normalizedVectorX * vectorLength;
                     float extendedShoulderY = norm_ShoulderY - normalizedVectorY * vectorLength;
 
-                    // 新的Hip點：向Hip方向延伸一倍距離
-                    float extendedHipX = norm_HipX + normalizedVectorX * vectorLength;
-                    float extendedHipY = norm_HipY + normalizedVectorY * vectorLength;
+                    // // 新的Hip點：向Hip方向延伸一倍距離
+                    // float extendedHipX = norm_HipX + normalizedVectorX * vectorLength;
+                    // float extendedHipY = norm_HipY + normalizedVectorY * vectorLength;
 
                     // 更新Shoulder和Hip座標
                     norm_ShoulderX = std::clamp(extendedShoulderX, norm_x1, norm_x2);
                     norm_ShoulderY = std::clamp(extendedShoulderY, norm_y1, norm_y2);
-                    norm_HipX = std::clamp(extendedHipX, norm_x1, norm_x2);
-                    norm_HipY = std::clamp(extendedHipY, norm_y1, norm_y2);
+                    // norm_HipX = std::clamp(extendedHipX, norm_x1, norm_x2);
+                    // norm_HipY = std::clamp(extendedHipY, norm_y1, norm_y2);
                 }
                 // 使用Shoulder-Hip線段與ROI邊界進行相交判斷
                 cv::Point2f shoulder_point(norm_ShoulderX, norm_ShoulderY);

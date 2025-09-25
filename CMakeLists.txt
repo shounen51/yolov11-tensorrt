@@ -20,6 +20,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/YUV420ToRGB)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/fall)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/climb)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/tracker)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/crowd)
 
 # Set TensorRT path
 set(TENSORRT_DIR "C:/Program Files (x86)/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8")
@@ -39,6 +40,7 @@ set(COMMON_SOURCES
     src/fall/fall_thread.cpp
     src/climb/climb_thread_MRT.cpp
     src/tracker/tracker.cpp
+    src/crowd/crowd_thread.cpp
 )
 set(COMMON_HEADERS
     src/yolov11.h
@@ -54,6 +56,7 @@ set(COMMON_HEADERS
     src/fall/fall_thread.h
     src/climb/climb_thread_MRT.h
     src/tracker/tracker.h
+    src/crowd/crowd_thread.h
 )
 
 # === DLL target ===

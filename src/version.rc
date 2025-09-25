@@ -7,7 +7,7 @@
 // BUILD: 自動構建編號 (可選)
 #define VER_MAJOR 1     // 重大架構變更、API破壞性變更
 #define VER_MINOR 1     // 新功能、向下相容的API變更、數據不相容的更新
-#define VER_PATCH 0     // Bug修復、小幅改進
+#define VER_PATCH 1     // Bug修復、小幅改進
 #define VER_BUILD 0     // 構建編號（可選）
 
 // 自動生成版本格式 - 不需要修改以下內容
