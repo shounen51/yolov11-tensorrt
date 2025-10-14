@@ -21,6 +21,8 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/fall)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/climb)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/tracker)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/crowd)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_color)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/yolo_cloth_color)
 
 # Set TensorRT path
 set(TENSORRT_DIR "C:/Program Files (x86)/TensorRT-8.6.1.6.Windows10.x86_64.cuda-11.8")
@@ -32,9 +34,11 @@ enable_language(CUDA)
 # === Source files ===
 set(COMMON_SOURCES
     src/yolov11.cpp
+    src/YOLOv11Seg.cpp
     src/Logger.cpp
     src/preprocess.cu
-    src/detection_color_thread.cpp
+    src/yolo_color/detection_color_thread.cpp
+    src/yolo_cloth_color/detection_cloth_color_thread.cpp
     src/ColorClassifier/ColorClassifier.cpp
     src/YUV420ToRGB/YUV420ToRGB.cu
     src/fall/fall_thread.cpp
@@ -44,13 +48,15 @@ set(COMMON_SOURCES
 )
 set(COMMON_HEADERS
     src/yolov11.h
+    src/YOLOv11Seg.h
     src/Logger.h
     src/macros.h
     src/logging.h
     src/cuda_utils.h
     src/preprocess.h
     src/common.h
-    src/detection_color_thread.h
+    src/yolo_color/detection_color_thread.h
+    src/yolo_cloth_color/detection_cloth_color_thread.h
     src/ColorClassifier/ColorClassifier.h
     src/YUV420ToRGB/YUV420ToRGB.h
     src/fall/fall_thread.h

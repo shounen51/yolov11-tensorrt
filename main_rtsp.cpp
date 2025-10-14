@@ -60,6 +60,7 @@ int rotation_type = ROTATE_180;  // Default to 180 degree rotation for upside-do
 
 // Global variables for cumulative red box counting
 int total_red_box_count = 0;  // Cumulative count of red boxes
+int previous_total_count = 0; // Track previous count for logging
 
 // FALL cooldown mechanism
 chrono::steady_clock::time_point last_fall_alert_time;
@@ -270,7 +271,8 @@ functions parseFunction(const string& func_str) {
     if (func_str == "YOLO_COLOR" || func_str == "yolo") return functions::YOLO_COLOR;
     if (func_str == "FALL" || func_str == "fall") return functions::FALL;
     if (func_str == "CLIMB" || func_str == "climb") return functions::CLIMB;
-    if (func_str == "CROWD" || func_str == "crowd") return functions::CROWD; // Added CROWD
+    if (func_str == "CROWD" || func_str == "crowd") return functions::CROWD;
+    if (func_str == "YOLO_CLOTH_COLOR" || func_str == "cloth") return functions::YOLO_CLOTH_COLOR;
     return functions::YOLO_COLOR; // default
 }
 
@@ -280,7 +282,8 @@ const char* getFunctionName(functions func) {
         case functions::YOLO_COLOR: return "YOLO_COLOR";
         case functions::FALL: return "FALL";
         case functions::CLIMB: return "CLIMB";
-        case functions::CROWD: return "CROWD"; // Added CROWD
+        case functions::CROWD: return "CROWD";
+        case functions::YOLO_CLOTH_COLOR: return "YOLO_CLOTH_COLOR";
         default: return "UNKNOWN";
     }
 }
@@ -576,14 +579,20 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                     label = "climb_" + to_string(obj.class_id);
                 }
                 break;
-            case functions::CROWD: { // New CROWD label logic using confidence
+            case functions::CROWD:
                 char buf[64];
                 snprintf(buf, sizeof(buf), "crowd %.2f", obj.confidence);
                 label = string(buf);
                 // Use red if ROI triggered, else green
                 if (obj.in_roi_id != -1) color = Scalar(0,0,255); else color = Scalar(0,255,0);
                 break;
-            }
+            case functions::YOLO_CLOTH_COLOR:
+                label = string("upper: ") + obj.color_label_first +
+                        " lower: " + obj.color_label_second;
+                break;
+            default:
+                label = "";
+                break;
         }
 
         // 画边界框
@@ -666,6 +675,12 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             engine_path1 = "weights/detection_model";
             engine_path2 = "weights/detection_model";
             break;
+        case functions::YOLO_CLOTH_COLOR:
+            engine_path1 = "weights/detection_model";
+            engine_path2 = "weights/clothes_model";
+            break;
+        default:
+            cerr << "[ERROR] Unsupported function type" << endl;
     }
 
     // Validate input source
@@ -871,6 +886,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                 case functions::CROWD: // For CROWD, count each ROI output (already one per ROI > threshold)
                     if (obj.in_roi_id != -1) red_box_count++;
                     break;
+                default:
+                    break;
             }
         }
 
@@ -882,7 +899,12 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                 // First fall detection, start cooldown
                 fall_cooldown_active = true;
                 last_fall_alert_time = current_time;
+                int old_count = total_red_box_count;
                 total_red_box_count += red_box_count;  // Count this detection
+                if (total_red_box_count > old_count) {
+                    cout << "[ALERT] Total alert count increased: " << old_count << " -> " << total_red_box_count
+                         << " (Function: " << getFunctionName(selected_function) << ", Frame: " << frame_count << ")" << endl;
+                }
             } else {
                 // Check if cooldown period has expired
                 auto time_since_last_alert = chrono::duration_cast<chrono::seconds>(current_time - last_fall_alert_time).count();
@@ -891,7 +913,12 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                     // Cooldown expired, count this detection and restart cooldown
                     fall_cooldown_active = true;
                     last_fall_alert_time = current_time;
+                    int old_count = total_red_box_count;
                     total_red_box_count += red_box_count;
+                    if (total_red_box_count > old_count) {
+                        cout << "[ALERT] Total alert count increased: " << old_count << " -> " << total_red_box_count
+                             << " (Function: " << getFunctionName(selected_function) << ", Frame: " << frame_count << ", Cooldown expired)" << endl;
+                    }
                 } else {
                     // Still in cooldown, reset cooldown timer but don't count
                     last_fall_alert_time = current_time;
@@ -908,7 +935,12 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             }
         } else if (selected_function != functions::FALL) {
             // For non-FALL functions, add to cumulative count normally
+            int old_count = total_red_box_count;
             total_red_box_count += red_box_count;
+            if (total_red_box_count > old_count) {
+                cout << "[ALERT] Total alert count increased: " << old_count << " -> " << total_red_box_count
+                     << " (Function: " << getFunctionName(selected_function) << ", Frame: " << frame_count << ")" << endl;
+            }
         }
 
         // Display cumulative red box count in red text

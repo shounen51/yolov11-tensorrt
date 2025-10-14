@@ -117,7 +117,8 @@ enum functions {
     YOLO_COLOR = 0,
     FALL = 1,
     CLIMB = 2,
-    CROWD = 3
+    CROWD = 3,
+    YOLO_CLOTH_COLOR = 4
 };
 
 /**

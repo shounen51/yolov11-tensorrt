@@ -298,8 +298,8 @@ void HSVColorClassifier::setDefaultColorRange()
         // 這裡的範圍請依 HSV 空間調整（範例：OpenCV HSV H:0~180, S:0~255, V:0~255）
 
         ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  60), color_black ), // black
-        ColorRange(Color_t(  0,   0,  61), Color_t(180,  80, 191), color_gray  ), // gray
-        ColorRange(Color_t(  0,   0, 192), Color_t(180,  50, 255), color_white ), // white
+        ColorRange(Color_t(  0,   0,  61), Color_t(180,  80, 178), color_gray  ), // gray
+        ColorRange(Color_t(  0,   0, 179), Color_t(180,  50, 255), color_white ), // white
 
         ColorRange(Color_t(  0,  60, 127), Color_t(  6, 255, 255), color_red   ), // red (low H)
         ColorRange(Color_t(164,  60, 127), Color_t(180, 255, 255), color_red   ), // red (high H)

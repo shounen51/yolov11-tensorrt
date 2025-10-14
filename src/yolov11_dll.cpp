@@ -5,6 +5,7 @@
 #include "YUV420ToRGB.h"
 #include "Logger.h"
 #include "detection_color_thread.h"
+#include "detection_cloth_color_thread.h"
 #include "fall_thread.h"
 #include "climb_thread.h"
 #include "crowd_thread.h"
@@ -153,6 +154,19 @@ extern "C" {
                 Crowd::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
                 break;
             }
+            case functions::YOLO_CLOTH_COLOR: {
+                if (!checkFileExists(std::string(engine_path1))) {
+                    AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
+                    return;
+                }
+                if (!checkFileExists(std::string(engine_path2))) {
+                    AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
+                    return;
+                }
+                AILOG_INFO("Initializing YOLOv11 with Color Classification model with engines: " + std::string(engine_path1) + " and " + std::string(engine_path2));
+                YoloWithClothColor::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
+                break;
+            }
             default: {
                 AILOG_ERROR("Unknown function type: " + std::to_string(function));
                 break;
@@ -198,6 +212,15 @@ extern "C" {
                 if (Crowd::inputQueue.size() > 100)
                     AILOG_WARN("Input queue size exceeds 100, input too fast.");
                 return (int)Crowd::inputQueue.size();
+            }
+            case functions::YOLO_CLOTH_COLOR: {
+                if (YoloWithClothColor::stopThread || camera_id >= YoloWithClothColor::outputQueues.size()) return -1;
+                std::lock_guard<std::mutex> lock(YoloWithClothColor::inputQueueMutex);
+                YoloWithClothColor::inputQueue.push({camera_id, image_data, width, height, channels, max_output});
+                YoloWithClothColor::inputQueueCondition.notify_one();
+                if (YoloWithClothColor::inputQueue.size() > 100)
+                    AILOG_WARN("Input queue size exceeds 100, input too fast.");
+                return (int)YoloWithClothColor::inputQueue.size();
             }
             default: {
                 AILOG_ERROR("Unknown function type: " + std::to_string(function));
@@ -264,6 +287,20 @@ extern "C" {
                 }
                 result = Crowd::outputQueues[camera_id].front();
                 Crowd::outputQueues[camera_id].pop();
+                break;
+            }
+            case functions::YOLO_CLOTH_COLOR: {
+                if (YoloWithClothColor::stopThread || camera_id > YoloWithClothColor::outputQueues.size()) return -1;
+                if (YoloWithClothColor::outputQueues[camera_id].empty()) {
+                    if (wait) {
+                        std::unique_lock<std::mutex> lock(*YoloWithClothColor::outputQueueMutexes[camera_id]);
+                        YoloWithClothColor::outputQueueConditions[camera_id]->wait(lock, [&] { return !YoloWithClothColor::outputQueues[camera_id].empty() || YoloWithClothColor::stopThread; });
+                    } else return -1;
+                } else {
+                    std::unique_lock<std::mutex> lock(*YoloWithClothColor::outputQueueMutexes[camera_id]);
+                }
+                result = YoloWithClothColor::outputQueues[camera_id].front();
+                YoloWithClothColor::outputQueues[camera_id].pop();
                 break;
             }
             default: {

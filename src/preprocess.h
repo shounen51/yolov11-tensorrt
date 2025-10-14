@@ -9,3 +9,4 @@ void cuda_preprocess_destroy();
 void cuda_preprocess(uint8_t* src, int src_width, int src_height,
     float* dst, int dst_width, int dst_height,
     cudaStream_t stream);
+void save_preprocessed_image(float* gpu_chw_data, int width, int height, const std::string& filename);

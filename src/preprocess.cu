@@ -133,7 +133,7 @@ void cuda_preprocess(
 
     // GPU: Perform warp affine transformation and normalization
     warpaffine_kernel<<<blocks, threads, 0, stream>>>(
-        img_buffer_device, src_width * 3, src_width,
+        src, src_width * 3, src_width,
         src_height, dst, dst_width,
         dst_height, 128, d2s, jobs);
 }
@@ -148,4 +148,41 @@ void cuda_preprocess_init(int max_image_size) {
 void cuda_preprocess_destroy() {
     CUDA_CHECK(cudaFree(img_buffer_device));
     CUDA_CHECK(cudaFreeHost(img_buffer_host));
+}
+
+void save_preprocessed_image(float* gpu_chw_data, int width, int height, const std::string& filename) {
+    // 分配主機記憶體
+    size_t total_elements = 3 * width * height;
+    std::vector<float> host_data(total_elements);
+
+    // 從GPU複製資料到主機
+    cudaMemcpy(host_data.data(), gpu_chw_data, total_elements * sizeof(float), cudaMemcpyDeviceToHost);
+
+    // 建立OpenCV Mat並重新排列資料：CHW -> HWC
+    cv::Mat image(height, width, CV_8UC3);
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            int hw_idx = y * width + x;
+            // CHW格式：每個通道佔 width*height 個元素
+            float c0 = host_data[hw_idx];                    // R 通道
+            float c1 = host_data[width * height + hw_idx];   // G 通道
+            float c2 = host_data[2 * width * height + hw_idx]; // B 通道
+
+            // 反正規化：[0,1] -> [0,255] 並轉為uint8
+            uint8_t b0 = static_cast<uint8_t>(std::clamp(c0 * 255.0f, 0.0f, 255.0f));
+            uint8_t b1 = static_cast<uint8_t>(std::clamp(c1 * 255.0f, 0.0f, 255.0f));
+            uint8_t b2 = static_cast<uint8_t>(std::clamp(c2 * 255.0f, 0.0f, 255.0f));
+
+            // OpenCV使用BGR順序
+            image.at<cv::Vec3b>(y, x) = cv::Vec3b(b2, b1, b0);
+        }
+    }
+
+    // 儲存為JPG
+    if (!cv::imwrite(filename, image)) {
+        std::cerr << "Failed to save preprocessed image: " << filename << std::endl;
+    } else {
+        std::cout << "Saved preprocessed image: " << filename << std::endl;
+    }
 }

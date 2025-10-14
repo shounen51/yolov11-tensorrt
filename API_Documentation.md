@@ -6,12 +6,13 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 
 ## 版本訊息
 
-**當前版本**：1.1.1
+**當前版本**：1.2.0
 
 模型名稱：
  - detection_model
  - fall_model
  - pose_model
+ - clothes_model
 
 使用 threshold：
  - YOLO_COLOR:
@@ -22,17 +23,13 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
     - threshold: 0.3
  - CROWD:
     - threshold: 0.3
+ - YOLO_CLOTH_COLOR:
+    - threshold: 0.5
 
 更新內容：
 
-1. 新增功能「CROWD」以偵測群聚人群，功能如下
-    - 不會輸出一般的框
-    - 必須繪製 roi 才可以進行偵測
-    - 偵測 roi 範圍內被人框覆蓋的百分比
-    - 當百分比超過 30% 時輸出一個與 roi 同大小、位置的人框，並且以 confidence 紀錄覆蓋的百分比，以 in_roi 紀錄計算的 roi_id
-2. 為了未來改版時可能只改模型不改 code，模型的讀取一律改用 symlink，當重新轉換 tensorrt 檔案後務必刪除舊的 model symlink，並且以新的 engine 檔案建立 symlink，建立方式是將 engine 檔案拖曳到「create_link.bat - 捷徑」中，輸入該 engine 的對應模型名稱即可
-3. FALL 功能的跌倒定義由「坐在地上+倒地」改為「倒地」，移除的姿勢包含低坐姿、低蹲姿，坐下往後撐地仍然是倒地姿勢
-3. 增加 log
+1. 新增功能 -【cloth】
+用衣服辨識模型精確地辨識衣服區域再進行顏色辨識，其餘功能和【YOLO_COLOR】功能相同
 ---
 ## 核心數據結構
 
@@ -41,7 +38,9 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 enum functions {
     YOLO_COLOR = 0,   // 物件檢測與顏色分類
     FALL = 1,         // 跌倒檢測
-    CLIMB = 2         // 攀爬檢測
+    CLIMB = 2,         // 攀爬檢測
+    CROWD = 3,          // 群聚偵測
+    YOLO_CLOTH_COLOR = 4 // 物件偵測與精確衣著顏色
 };
 ```
 
@@ -90,21 +89,6 @@ typedef struct svResultProjectObject_DataType {
 81 - person_on_wheelchair
 ```
 
-
-#### 常用類別快速參考
-```cpp
-// 常用的 COCO class_id
-const int PERSON = 0;              // 人員
-const int BICYCLE = 1;             // 腳踏車
-const int CAR = 2;                 // 汽車
-const int MOTORCYCLE = 3;          // 機車
-const int BUS = 5;                 // 公車
-const int TRAIN = 6;               // 火車
-const int WHEELCHAIR = 80;         // 輪椅
-const int PERSON_ON_WHEELCHAIR = 81; // 坐輪椅的人
-```
-
-```
 ## 核心 API 函數
 
 ### 1. 模型初始化
