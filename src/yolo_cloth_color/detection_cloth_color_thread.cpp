@@ -168,12 +168,12 @@ namespace YoloWithClothColor {
 
 
                 string upperColorLabel{"none"}, lowerColorLabel{"none"};
+                int crop_x1 = std::max(0, static_cast<int>(x1));
+                int crop_y1 = std::max(0, static_cast<int>(y1));
+                int crop_x2 = std::min(rgb_image.cols, static_cast<int>(x2));
+                int crop_y2 = std::min(rgb_image.rows, static_cast<int>(y2));
+                cv::Mat personCrop = rgb_image(Rect(crop_x1, crop_y1, crop_x2 - crop_x1, crop_y2 - crop_y1));
                 if (det.class_id == static_cast<int>(CustomClass::PERSON)) {
-                    int crop_x1 = std::max(0, static_cast<int>(x1));
-                    int crop_y1 = std::max(0, static_cast<int>(y1));
-                    int crop_x2 = std::min(rgb_image.cols, static_cast<int>(x2));
-                    int crop_y2 = std::min(rgb_image.rows, static_cast<int>(y2));
-                    cv::Mat personCrop = rgb_image(Rect(crop_x1, crop_y1, crop_x2 - crop_x1, crop_y2 - crop_y1));
                     // 使用衣服模型 計算顏色
                     uint8_t* dImage = nullptr;
                     if (personCrop.empty() || personCrop.cols <= 0 || personCrop.rows <= 0) {
@@ -232,6 +232,19 @@ namespace YoloWithClothColor {
                             lowerColorLabel = ColorLabelsString[maxIndex];
                         }
                     }
+                }
+                // 非人物件的顏色辨識
+                else{
+                    vector<unsigned char> color = colorClassifier.classifyStatistics(personCrop, 500, cv::COLOR_RGB2HSV);
+                    int maxIndex = 0;
+                    int maxCount = 0;
+                    for (int j = 0; j < color.size(); j++) {
+                        if (color[j] > maxCount && ColorLabelsString[j] != "unknown") {
+                            maxCount = color[j];
+                            maxIndex = j;
+                        }
+                    }
+                    upperColorLabel = ColorLabelsString[maxIndex];
                 }
                 std::vector<std::string> color_labels{upperColorLabel, lowerColorLabel};
                 // 正規化成 [0~1]

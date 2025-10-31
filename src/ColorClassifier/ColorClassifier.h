@@ -34,14 +34,14 @@ ColorRange& operator &= (ColorRange& a, const ColorRange& b);
 ColorRange operator & (const ColorRange& a, const ColorRange& b);
 
 static const std::vector<std::string> ColorLabelsString = {
-    "unknow", "black", "gray", "white", // IsGrayscale
+    "unknown", "black", "gray", "white", // IsGrayscale
     "red", "orange", "brown", "yellow", "green", "cyan", "blue", "purple" // IsColor
 };
 
 enum ColorLabels : unsigned char
 {
     // IsGrayscale = 7, IsColor = 248, //~IsGrayscale,
-    color_unknow=0, color_black, color_gray, color_white,                                                                 // IsGrayscale
+    color_unknown=0, color_black, color_gray, color_white,                                                                 // IsGrayscale
     color_red, color_orange, color_brown, color_yellow, color_green, color_cyan, color_blue, color_purple   // IsColor
 };
 

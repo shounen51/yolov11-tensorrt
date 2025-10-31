@@ -86,7 +86,7 @@ void yolo_thread(const char* engine_path1, const char* engine_path2, const char*
         double actual_fps = (1000000.0 / inference_time) * camera_amount;
         double per_camera_fps = 1000000.0 / inference_time;
         cout << "[YOLO] Inference time: " << inference_time << " us, Actual FPS: " << fixed << setprecision(1) << actual_fps
-             << " (per camera: " << per_camera_fps << endl;
+             << " (per camera: " << per_camera_fps << ")" << endl;
     }
 
     // Cleanup
@@ -262,13 +262,13 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     cout << "\n[CLIMB] Thread finished for " << camera_amount << " cameras" << endl;
 }
 
-int main() {
-    const char* yolo_engine_path1 = "weights/wheelchair_m_2.1.4.engine";
-    const char* yolo_engine_path2 = "weights/wheelchair_m_2.1.4.engine";
-    const char* fall_engine_path1 = "weights/wheelchair_m_2.1.4.engine";
-    const char* fall_engine_path2 = "weights/yolo-fall4s-cls_1.6.1.engine";
-    const char* climb_engine_path1 = "weights/yolo11x-pose.engine";
-    const char* climb_engine_path2 = "weights/yolo11x-pose.engine";
+int main(int argc, char* argv[]) {
+    const char* yolo_engine_path1 = "weights/detection_model";
+    const char* yolo_engine_path2 = "weights/detection_model";
+    const char* fall_engine_path1 = "weights/detection_model";
+    const char* fall_engine_path2 = "weights/fall_model";
+    const char* climb_engine_path1 = "weights/pose_model";
+    const char* climb_engine_path2 = "weights/pose_model";
     const char* yolo_video_path = "videos/yolo.mp4";
     const char* fall_video_path = "videos/fall.mp4";
     const char* climb_video_path = "videos/climb.mp4";
@@ -279,11 +279,26 @@ int main() {
     int fall_fps = 2;
     int climb_fps = 10;
 
-    // Camera amount settings
-    int yolo_camera_amount = 30;  // Process cameras 0, 1, 2
-    int fall_camera_amount = 0;  // Process cameras 0, 1, 2
-    int climb_camera_amount = 0;  // Process cameras 0, 1, 2
+    // Camera amount settings - can be overridden by command line arguments
+    int yolo_camera_amount = 20;   // Default: disabled
+    int fall_camera_amount = 10;  // Default: 30 cameras
+    int climb_camera_amount = 10;  // Default: disabled
 
+    // Parse command line arguments
+    if (argc > 1) {
+        yolo_camera_amount = atoi(argv[1]);
+        cout << "YOLO camera amount set to: " << yolo_camera_amount << " (from command line)" << endl;
+    }
+    if (argc > 2) {
+        fall_camera_amount = atoi(argv[2]);
+        cout << "FALL camera amount set to: " << fall_camera_amount << " (from command line)" << endl;
+    }
+    if (argc > 3) {
+        climb_camera_amount = atoi(argv[3]);
+        cout << "CLIMB camera amount set to: " << climb_camera_amount << " (from command line)" << endl;
+    }
+
+    cout << "\n=== Configuration ===" << endl;
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;
     cout << "CLIMB engines: " << climb_engine_path1 << ", " << climb_engine_path2 << endl;

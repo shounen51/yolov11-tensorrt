@@ -154,7 +154,7 @@ std::vector<unsigned char> HSVColorClassifier::classify(Color_t color)
     }
     if (output_colorLabels.empty())
     {
-        output_colorLabels.push_back(color_unknow);
+        output_colorLabels.push_back(color_unknown);
     }
 
     return output_colorLabels;
@@ -297,9 +297,9 @@ void HSVColorClassifier::setDefaultColorRange()
 
         // 這裡的範圍請依 HSV 空間調整（範例：OpenCV HSV H:0~180, S:0~255, V:0~255）
 
-        ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  60), color_black ), // black
-        ColorRange(Color_t(  0,   0,  61), Color_t(180,  80, 178), color_gray  ), // gray
-        ColorRange(Color_t(  0,   0, 179), Color_t(180,  50, 255), color_white ), // white
+        ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  80), color_black ), // black
+        ColorRange(Color_t(  0,   0,  81), Color_t(180,  80, 188), color_gray  ), // gray
+        ColorRange(Color_t(  0,   0, 189), Color_t(180,  50, 255), color_white ), // white
 
         ColorRange(Color_t(  0,  60, 127), Color_t(  6, 255, 255), color_red   ), // red (low H)
         ColorRange(Color_t(164,  60, 127), Color_t(180, 255, 255), color_red   ), // red (high H)
@@ -308,9 +308,10 @@ void HSVColorClassifier::setDefaultColorRange()
         ColorRange(Color_t(  7,  38, 217), Color_t( 20,  77, 255), color_brown ), // brown
         ColorRange(Color_t( 20,  60,  80), Color_t( 34, 255, 255), color_yellow), // yellow
         ColorRange(Color_t( 35,  60,  80), Color_t( 77, 255, 255), color_green ), // green
-        // ColorRange(Color_t( 78,    ,    ), Color_t(   , 204, 255), color_cyan  ), // cyan
-        ColorRange(Color_t( 78,  80,  85), Color_t(120, 255, 255), color_blue  ), // blue
-        ColorRange(Color_t(120, 216, 112), Color_t(127, 255, 255), color_blue  ), // blue
+        ColorRange(Color_t( 78,  60,  80), Color_t( 90, 255, 178), color_green ), // green
+        ColorRange(Color_t( 78,  80, 179), Color_t( 90, 255, 255), color_blue  ), // blue
+        ColorRange(Color_t( 90,  80,  85), Color_t(120, 255, 255), color_blue  ), // blue
+        ColorRange(Color_t(120, 216, 179), Color_t(127, 255, 255), color_blue  ), // blue
         ColorRange(Color_t(120,  60, 112), Color_t(127, 215, 255), color_purple), // purple
         ColorRange(Color_t(128,  60, 153), Color_t(163, 255, 255), color_purple), // purple
     };

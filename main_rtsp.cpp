@@ -556,7 +556,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         // 根據不同功能調整標籤和顏色
         switch (function_type) {
             case functions::YOLO_COLOR:
-                label = to_string(obj.class_id) + " in roi: " + to_string(obj.in_roi_id);
+                label = string("") + obj.color_label_first +
+                        " " + obj.color_label_second;
                 if (obj.in_roi_id != -1) {
                     color = Scalar(0, 0, 255); // 紅色 - 在ROI內的物件
                 }
@@ -587,8 +588,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                 if (obj.in_roi_id != -1) color = Scalar(0,0,255); else color = Scalar(0,255,0);
                 break;
             case functions::YOLO_CLOTH_COLOR:
-                label = string("upper: ") + obj.color_label_first +
-                        " lower: " + obj.color_label_second;
+                label = string("") + obj.color_label_first +
+                        " " + obj.color_label_second;
                 break;
             default:
                 label = "";
