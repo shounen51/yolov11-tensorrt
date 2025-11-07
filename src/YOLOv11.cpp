@@ -8,6 +8,9 @@
 #include "Logger.h"
 #include <fstream>
 #include <iostream>
+#include <algorithm>
+#include <numeric>
+#include <chrono>
 
 
 static Logger logger;
@@ -141,68 +144,105 @@ void YOLOv11::infer()
 
 void YOLOv11::postprocess(vector<Detection>& output)
 {
+    using clock = std::chrono::high_resolution_clock;
+    auto t0_total = clock::now();
     // Memcpy from device output buffer to host output buffer
+    auto t0_copy = clock::now();
     CUDA_CHECK(cudaMemcpyAsync(cpu_output_buffer, gpu_buffers[1], num_detections * detection_attribute_size * sizeof(float), cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    auto t1_copy = clock::now();
 
-    vector<Rect> boxes;
-    vector<int> class_ids;
-    vector<float> confidences;
-    vector<Rect> boxes_pw; // pw special
-    vector<int> class_ids_pw; // pw special
-    vector<float> confidences_pw; // pw special
-    vector<Rect> boxes_w; // pw special
-    vector<int> class_ids_w; // pw special
-    vector<float> confidences_w; // pw special
-    const Mat det_output(detection_attribute_size, num_detections, CV_32F, cpu_output_buffer);
+    // Reserve to avoid reallocations in common cases
+    vector<Rect> boxes; boxes.reserve(512);
+    vector<int> class_ids; class_ids.reserve(512);
+    vector<float> confidences; confidences.reserve(512);
+    vector<Rect> boxes_pw; boxes_pw.reserve(64); // pw special
+    vector<int> class_ids_pw; class_ids_pw.reserve(64); // pw special
+    vector<float> confidences_pw; confidences_pw.reserve(64); // pw special
+    vector<Rect> boxes_w; boxes_w.reserve(64); // pw special
+    vector<int> class_ids_w; class_ids_w.reserve(64); // pw special
+    vector<float> confidences_w; confidences_w.reserve(64); // pw special
 
-    for (int i = 0; i < det_output.cols; ++i) {
-        const Mat classes_scores = det_output.col(i).rowRange(4, 4 + num_classes);
-        Point class_id_point;
-        double score;
-        minMaxLoc(classes_scores, nullptr, &score, nullptr, &class_id_point);
+    // Layout: rows = detection_attribute_size, cols = num_detections
+    // Access element (r, c) at cpu_output_buffer[r * num_detections + c]
+    auto t0_decode = clock::now();
 
-        if (score > conf_threshold) {
-            const float cx = det_output.at<float>(0, i);
-            const float cy = det_output.at<float>(1, i);
-            const float ow = det_output.at<float>(2, i);
-            const float oh = det_output.at<float>(3, i);
+    for (int i = 0; i < num_detections; ++i) {
+        // Find best class score for detection i
+        int best_class = -1;
+        float best_score = -1.0f;
+        // classes start from row 4 to 4 + num_classes - 1
+        int class_row_start = 4;
+        int class_row_end = 4 + num_classes;
+        for (int r = class_row_start; r < class_row_end; ++r) {
+            float s = cpu_output_buffer[r * num_detections + i];
+            if (s > best_score) {
+                best_score = s;
+                best_class = r - 4; // convert row index to class id
+            }
+        }
+
+        if (best_score > conf_threshold) {
+            const float cx = cpu_output_buffer[0 * num_detections + i];
+            const float cy = cpu_output_buffer[1 * num_detections + i];
+            const float ow = cpu_output_buffer[2 * num_detections + i];
+            const float oh = cpu_output_buffer[3 * num_detections + i];
             Rect box;
             box.x = static_cast<int>((cx - 0.5 * ow));
             box.y = static_cast<int>((cy - 0.5 * oh));
             box.width = static_cast<int>(ow);
             box.height = static_cast<int>(oh);
 
-            // if ((box.width > 0.5*640 || box.height > 0.5*640) && class_id_point.y == static_cast<int>(CustomClass::PERSON)) {
-            //     // filter out large boxes
-            //     AILOG_DEBUG("Filter out large person box: " + std::to_string(box.width) + "x" + std::to_string(box.height));
-            //     continue;
-            // }
-            if (class_id_point.y == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) { // pw special
+            if (best_class == static_cast<int>(CustomClass::PERSON_ON_WHEELCHAIR)) { // pw special
                 boxes_pw.push_back(box); // pw special
-                class_ids_pw.push_back(class_id_point.y); // pw special
-                confidences_pw.push_back(score); // pw special
+                class_ids_pw.push_back(best_class); // pw special
+                confidences_pw.push_back(best_score); // pw special
             } // pw special
-            else if (class_id_point.y == static_cast<int>(CustomClass::WHEELCHAIR)) {
+            else if (best_class == static_cast<int>(CustomClass::WHEELCHAIR)) {
                 boxes_w.push_back(box);
-                class_ids_w.push_back(class_id_point.y);
-                confidences_w.push_back(score);
+                class_ids_w.push_back(best_class);
+                confidences_w.push_back(best_score);
             }
 
             else { // pw special
                 boxes.push_back(box);
-                class_ids.push_back(class_id_point.y);
-                confidences.push_back(score);
+                class_ids.push_back(best_class);
+                confidences.push_back(best_score);
             } // pw special
         }
     }
+    auto t1_decode = clock::now();
+
+    // Optional top-K pruning to bound NMS complexity
+    constexpr size_t MAX_CANDIDATES_GENERAL = 300;
+    constexpr size_t MAX_CANDIDATES_SPECIAL = 200; // for pw and wheelchair
+    auto prune_topk = [](std::vector<cv::Rect>& b, std::vector<int>& cid, std::vector<float>& conf, size_t k) {
+        if (b.size() <= k) return;
+        std::vector<int> idx(b.size());
+        std::iota(idx.begin(), idx.end(), 0);
+        std::nth_element(idx.begin(), idx.begin() + k, idx.end(), [&](int a, int c){ return conf[a] > conf[c]; });
+        idx.resize(k);
+        std::vector<cv::Rect> nb; nb.reserve(k);
+        std::vector<int> ncid; ncid.reserve(k);
+        std::vector<float> nconf; nconf.reserve(k);
+        for (int id : idx) { nb.push_back(b[id]); ncid.push_back(cid[id]); nconf.push_back(conf[id]); }
+        b.swap(nb); cid.swap(ncid); conf.swap(nconf);
+    };
+
+    auto t0_prune = clock::now();
+    prune_topk(boxes, class_ids, confidences, MAX_CANDIDATES_GENERAL);
+    prune_topk(boxes_pw, class_ids_pw, confidences_pw, MAX_CANDIDATES_SPECIAL);
+    prune_topk(boxes_w, class_ids_w, confidences_w, MAX_CANDIDATES_SPECIAL);
+    auto t1_prune = clock::now();
 
     vector<int> nms_result;
+    auto t0_nms = clock::now();
     dnn::NMSBoxes(boxes, confidences, conf_threshold, nms_threshold, nms_result);
     vector<int> nms_result_pw; // pw special
     dnn::NMSBoxes(boxes_pw, confidences_pw, conf_threshold, nms_threshold, nms_result_pw); // pw special
     vector<int> nms_result_w; // pw special
     dnn::NMSBoxes(boxes_w, confidences_w, conf_threshold, nms_threshold, nms_result_w); // pw special
+    auto t1_nms = clock::now();
 
     // 收集所有人框的中心點 (包括一般人和輪椅上的人)
     vector<Point> person_centers;
@@ -223,37 +263,10 @@ void YOLOv11::postprocess(vector<Detection>& output)
         }
     }
 
-    // 過濾一般檢測框 - 移除包含超過2個人框中心的框
+    // 過濾一般檢測框
     for (int i = 0; i < nms_result.size(); i++)
     {
         int idx = nms_result[i];
-        Rect current_box = boxes[idx];
-
-        // 計算當前框中包含多少個人框中心
-        int person_count_in_box = 0;
-        for (const Point& center : person_centers) {
-            if (current_box.contains(center)) {
-                person_count_in_box++;
-            }
-        }
-
-        // 如果包含超過2個人框中心，則跳過這個檢測
-        if (person_count_in_box > 2) {
-            if (person_count_in_box > 8) {
-                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
-                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height) + " high crowded");
-            }
-            else if (person_count_in_box > 5) {
-                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
-                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height) + " medium crowded");
-            }
-            else if (person_count_in_box > 2) {
-                AILOG_DEBUG("Filter out box containing " + std::to_string(person_count_in_box) + " person centers: " +
-                    std::to_string(current_box.width) + "x" + std::to_string(current_box.height));
-            }
-            continue;
-        }
-
         Detection result;
         result.class_id = class_ids[idx];
         result.conf = confidences[idx];
@@ -261,7 +274,7 @@ void YOLOv11::postprocess(vector<Detection>& output)
         output.push_back(result);
     }
 
-    // 過濾輪椅上的人檢測框 - 移除包含超過2個人框中心的框
+    // 過濾輪椅上的人檢測框
     for (int i = 0; i < nms_result_pw.size(); i++) // pw special
     {
         int idx = nms_result_pw[i];
@@ -280,7 +293,20 @@ void YOLOv11::postprocess(vector<Detection>& output)
         result.bbox = boxes_w[idx]; // pw special
         output.push_back(result); // pw special
     } // pw special
-    AILOG_DEBUG("Postprocess found " + std::to_string(output.size()) + " objects");
+    auto t1_total = clock::now();
+    auto ms_copy = std::chrono::duration_cast<std::chrono::microseconds>(t1_copy - t0_copy).count() / 1000.0;
+    auto ms_decode = std::chrono::duration_cast<std::chrono::microseconds>(t1_decode - t0_decode).count() / 1000.0;
+    auto ms_prune = std::chrono::duration_cast<std::chrono::microseconds>(t1_prune - t0_prune).count() / 1000.0;
+    auto ms_nms = std::chrono::duration_cast<std::chrono::microseconds>(t1_nms - t0_nms).count() / 1000.0;
+    auto ms_total = std::chrono::duration_cast<std::chrono::microseconds>(t1_total - t0_total).count() / 1000.0;
+    AILOG_DEBUG(
+        std::string("Postprocess: copy=") + std::to_string(ms_copy) + "ms, " +
+        "decode=" + std::to_string(ms_decode) + "ms, " +
+        "prune=" + std::to_string(ms_prune) + "ms, " +
+        "nms=" + std::to_string(ms_nms) + "ms, " +
+        "total=" + std::to_string(ms_total) + "ms, " +
+        "cand(g/pw/w)=" + std::to_string(boxes.size()) + "/" + std::to_string(boxes_pw.size()) + "/" + std::to_string(boxes_w.size())
+    );
 }
 
 void YOLOv11::build(std::string onnxPath, nvinfer1::ILogger& logger)

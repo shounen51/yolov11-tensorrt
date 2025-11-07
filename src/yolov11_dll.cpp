@@ -7,7 +7,7 @@
 #include "detection_color_thread.h"
 #include "detection_cloth_color_thread.h"
 #include "fall_thread.h"
-#include "climb_thread.h"
+#include "climb_thread_MRT.h"
 #include "crowd_thread.h"
 #include <cuda_utils.h>
 #include <memory>
@@ -113,21 +113,17 @@ extern "C" {
         } else {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
+        if (!checkFileExists(std::string(engine_path1))) {
+            AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+            return;
+        }
         switch (function) {
             case functions::YOLO_COLOR: {
-                if (!checkFileExists(std::string(engine_path1))) {
-                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
-                    return;
-                }
                 AILOG_INFO("Initializing YOLOv11 model with engine: " + std::string(engine_path1));
                 YoloWithColor::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
                 break;
             }
             case functions::FALL: {
-                if (!checkFileExists(std::string(engine_path1))) {
-                    AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
-                    return;
-                }
                 if (!checkFileExists(std::string(engine_path2))) {
                     AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
                     return;
@@ -137,28 +133,20 @@ extern "C" {
                 break;
             }
             case functions::CLIMB: {
-                if (!checkFileExists(std::string(engine_path1))) {
-                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
+                if (!checkFileExists(std::string(engine_path2))) {
+                    AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
                     return;
                 }
                 AILOG_INFO("Initializing Climb Detection model with engine: " + std::string(engine_path1));
-                climb::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
+                climb::createModelAndStartThread(engine_path1, engine_path2, camera_amount, conf_threshold, logFilePath);
                 break;
             }
             case functions::CROWD: {
-                if (!checkFileExists(std::string(engine_path1))) {
-                    AILOG_ERROR("Engine file does not exist: " + std::string(engine_path1));
-                    return;
-                }
                 AILOG_INFO("Initializing Crowd Detection model with engine: " + std::string(engine_path1));
                 Crowd::createModelAndStartThread(engine_path1, camera_amount, conf_threshold, logFilePath);
                 break;
             }
             case functions::YOLO_CLOTH_COLOR: {
-                if (!checkFileExists(std::string(engine_path1))) {
-                    AILOG_ERROR("Engine file 1 does not exist: " + std::string(engine_path1));
-                    return;
-                }
                 if (!checkFileExists(std::string(engine_path2))) {
                     AILOG_ERROR("Engine file 2 does not exist: " + std::string(engine_path2));
                     return;
@@ -481,7 +469,7 @@ extern "C" {
             }
         }
     }
-    YOLOV11_API void release() {
+    YOLOV11_API void svRelease() {
         // 清理 YoloWithColor 資源
         YoloWithColor::stopThread = true;
         YoloWithColor::inputQueueCondition.notify_all();
@@ -490,6 +478,14 @@ extern "C" {
         }
         if (YoloWithColor::inferenceThread.joinable()) {
             YoloWithColor::inferenceThread.join();
+        }
+        // 釋放尚未取出的輸出緩衝區
+        for (auto& q : YoloWithColor::outputQueues) {
+            while (!q.empty()) {
+                auto od = q.front();
+                if (od.output) delete[] od.output;
+                q.pop();
+            }
         }
         YoloWithColor::model.reset();
         AILOG_INFO("YoloWithColor thread stopped and resources cleared.");
@@ -503,6 +499,13 @@ extern "C" {
         if (fall::inferenceThread.joinable()) {
             fall::inferenceThread.join();
         }
+        for (auto& q : fall::outputQueues) {
+            while (!q.empty()) {
+                auto od = q.front();
+                if (od.output) delete[] od.output;
+                q.pop();
+            }
+        }
         AILOG_INFO("Fall detection thread stopped and resources cleared.");
 
         // 清理 Climb Detection 資源
@@ -514,6 +517,13 @@ extern "C" {
         if (climb::inferenceThread.joinable()) {
             climb::inferenceThread.join();
         }
+        for (auto& q : climb::outputQueues) {
+            while (!q.empty()) {
+                auto od = q.front();
+                if (od.output) delete[] od.output;
+                q.pop();
+            }
+        }
         AILOG_INFO("Climb detection thread stopped and resources cleared.");
         // 清理 Crowd Detection 資源 (新增)
         Crowd::stopThread = true;
@@ -524,7 +534,32 @@ extern "C" {
         if (Crowd::inferenceThread.joinable()) {
             Crowd::inferenceThread.join();
         }
+        for (auto& q : Crowd::outputQueues) {
+            while (!q.empty()) {
+                auto od = q.front();
+                if (od.output) delete[] od.output;
+                q.pop();
+            }
+        }
         AILOG_INFO("Crowd detection thread stopped and resources cleared.");
+
+        // 清理 YoloWithClothColor 資源
+        YoloWithClothColor::stopThread = true;
+        YoloWithClothColor::inputQueueCondition.notify_all();
+        for (auto& cv : YoloWithClothColor::outputQueueConditions) {
+            cv->notify_all();
+        }
+        if (YoloWithClothColor::inferenceThread.joinable()) {
+            YoloWithClothColor::inferenceThread.join();
+        }
+        for (auto& q : YoloWithClothColor::outputQueues) {
+            while (!q.empty()) {
+                auto od = q.front();
+                if (od.output) delete[] od.output;
+                q.pop();
+            }
+        }
+        AILOG_INFO("YoloWithClothColor thread stopped and resources cleared.");
 
         // 清理所有 ROI 和穿越線資源
         camera_function_roi_map.clear();

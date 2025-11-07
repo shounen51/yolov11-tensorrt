@@ -1,4 +1,4 @@
-#include "YOLOv11.h"
+#include "sample.h"
 #include "preprocess.h"
 #include <fstream>
 #include <stdexcept>

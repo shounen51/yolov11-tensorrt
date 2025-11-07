@@ -236,7 +236,7 @@ namespace climb {
             int unpad_h = static_cast<int>(r * input.height);
             int pad_x = (INPUT_W - unpad_w) / 2;
             int pad_y = (INPUT_H - unpad_h) / 2;
-            svObjData_t* output = new svObjData_t[count];
+            svObjData_t* output = new svObjData_t[count]; // release at yolov11_dll svObjectModules_getResult()
 
             // 初始化所有元素
             for (int i = 0; i < count; ++i) {

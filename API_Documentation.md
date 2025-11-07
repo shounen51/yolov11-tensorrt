@@ -8,11 +8,21 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 
 **當前版本**：1.2.0
 
-模型名稱：
- - detection_model
- - fall_model
- - pose_model
- - clothes_model
+各功能使用模型：
+ - YOLO_COLOR:
+    1. detection_model
+ - FALL:
+    1. detection_model
+    2. fall_model
+ - CLIMB:
+    1. pose_model
+    2. detection_model
+ - CROWD:
+    1. detection_model
+    2. detection_model
+ - YOLO_CLOTH_COLOR:
+    1. detection_model
+    2. clothes_model
 
 使用 threshold：
  - YOLO_COLOR:
@@ -30,6 +40,50 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 
 1. 新增功能 -【cloth】
 用衣服辨識模型精確地辨識衣服區域再進行顏色辨識，其餘功能和【YOLO_COLOR】功能相同
+2. 內部功能修正：因為已修正了模型，移除了過濾模型錯誤標示大框的機制
+3. yolo 模型改善：改進後處理速度，相關功能 fps 上升
+4. climb功能修改：新增了列車偵測的功能，當偵測列車已進站會開啟過濾機制如同紅燈roi偵測燈亮，因為增加了一個 yolo 的運行所以速度降低
+
+## 注意事項
+
+1. **座標系統**：所有 ROI 座標都使用正規化座標 (0-1)
+2. **影像格式**：輸入必須是 YUV420 格式
+3. **線程安全**：API 支援多攝像頭併發處理
+4. **記憶體管理**：調用 `svRelease()` 清理資源
+5. **模型轉換**：請使用提供的模型轉換工具將 ONNX 模型轉換為 TensorRT 引擎檔 (.engine)
+6. **模型路徑**：自1.1.1版之後提供鏈結檔生成，將生成的.engine拖曳到「create_link.bat - 捷徑」來生成指定名稱的鏈結檔(會要求權限)，模型的名稱應為：［detection_model, fall_model, pose_model, clothes_model］之一
+---
+## 功能說明
+### YOLO_COLOR
+detection + 簡易顏色辨識
+
+如果設置了穿越線 ROI 會自動開啟追蹤功能
+
+### FALL
+跌倒偵測
+
+將人體姿勢大致分為：
+1. 跌倒: 胸背觸地或跌倒可能出現的跪姿等
+2. 坐在地上：坐在地上
+3. 坐在椅子上：坐在椅子或其他物品
+4. 站立：任何站著的姿勢包括走路
+
+詳細的姿勢定義請參閱"\\\\192.168.10.154\3svision\3S_產品研發處\共用資料夾_軟體研發部\Joseph\跌倒姿勢定義+範例.docx"
+
+### CLIMB
+爬牆偵測
+
+目前的爬牆偵測是針對北捷的車廂門牆設計，必須搭配牆脊線 ROI 使用，當有人的脊椎骨架和牆脊牆相交，並且脊椎骨架傾斜15度時視為爬牆
+
+可搭配紅燈 ROI 畫車廂上的開門指示燈，過濾進出車廂的乘客
+
+### CROWD
+群聚偵測
+
+- 不會輸出一般的框
+- 必須繪製 roi 才可以進行偵測
+- 偵測 roi 範圍內被人框覆蓋的百分比
+- 當百分比超過 30% 時輸出一個與 roi 同大小、位置的人框，並且以 confidence 紀錄覆蓋的百分比，以 in_roi 紀錄計算的 roi_id，以 track_id 記錄在 roi 內的人數
 ---
 ## 核心數據結構
 
@@ -303,7 +357,7 @@ while (running) {
 // 5. 清理資源
 svRemove_ROIandWall(0, functions::YOLO_COLOR, 0);
 svRemove_CrossingLine(0, functions::YOLO_COLOR, 0);
-release();
+svRelease();
 ```
 
 ### 多攝像頭處理
@@ -348,20 +402,13 @@ DLL 內建了物件追蹤功能，會自動為檢測到的人員分配 `track_id
 - `track_id = -1`：未分配追蹤 ID
 - `track_id >= 1`：有效的追蹤 ID
 
+
 ## 穿越線檢測原理
 
 1. **線段定義**：每對相鄰點構成一條線段
 2. **方向計算**：系統自動計算每條線段的垂直方向作為判斷基準
 3. **穿越檢測**：當物件的追蹤軌跡(前一幀和當前幀的底邊中心)與線段相交時觸發
 4. **方向判斷**：比較物件移動方向與預設方向，返回 1（正向）或 -1（反向）
-
-## 注意事項
-
-1. **座標系統**：所有 ROI 座標都使用正規化座標 (0-1)
-2. **影像格式**：輸入必須是 YUV420 格式
-3. **線程安全**：API 支援多攝像頭併發處理
-4. **記憶體管理**：記得調用 `release()` 清理資源
-5. **模型路徑**：確保引擎檔案存在且可讀取
 
 ## 錯誤處理
 
@@ -379,7 +426,7 @@ svRemove_CrossingLine(camera_id, function_id, roi_id);
 svRemove_MRTRedlightROI(camera_id, function_id, roi_id);
 
 // 釋放模型資源
-release();
+svRelease();
 ```
 
 

@@ -108,14 +108,14 @@ namespace YoloWithColor {
             std::vector<Detection> detections;
 
             model->preprocess(gpu_rgb_buffer, input.width, input.height, false);
-            // 利用 CPU 空檔時間將 GPU buffer 從 device 轉成 Mat
-            std::vector<uint8_t> rgb_host(input.width * input.height * 3);
-            CUDA_CHECK(cudaMemcpy(rgb_host.data(), gpu_rgb_buffer, input.width * input.height * 3 * sizeof(uint8_t), cudaMemcpyDeviceToHost));
-            cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
             // 等待 preprocess 完成
             model->joinGPUStream();
             AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " preprocess done");
             model->infer();
+            // 利用 CPU 空檔時間將 GPU buffer 從 device 轉成 Mat
+            std::vector<uint8_t> rgb_host(input.width * input.height * 3);
+            CUDA_CHECK(cudaMemcpy(rgb_host.data(), gpu_rgb_buffer, input.width * input.height * 3 * sizeof(uint8_t), cudaMemcpyDeviceToHost));
+            cv::Mat rgb_image(input.height, input.width, CV_8UC3, rgb_host.data());
             model->postprocess(detections);
             AILOG_DEBUG("frame:" + std::to_string(frame_counter) + " postprocess done");
             int count = std::min(static_cast<int>(detections.size()), input.max_output);
@@ -130,7 +130,7 @@ namespace YoloWithColor {
             int unpad_h = static_cast<int>(r * input.height);
             int pad_x = (INPUT_W - unpad_w) / 2;
             int pad_y = (INPUT_H - unpad_h) / 2;
-            svObjData_t* output = new svObjData_t[count];
+            svObjData_t* output = new svObjData_t[count]; // release at yolov11_dll svObjectModules_getResult()
 
             // 初始化所有元素
             for (int i = 0; i < count; ++i) {

@@ -262,6 +262,90 @@ void climb_thread(const char* engine_path1, const char* engine_path2, const char
     cout << "\n[CLIMB] Thread finished for " << camera_amount << " cameras" << endl;
 }
 
+// Thread function for CLOTH (YOLO_CLOTH_COLOR) detection - same pattern as YOLO
+void cloth_thread(const char* engine_path1, const char* engine_path2, const char* video_path,
+                  const char* log_file, int camera_amount, int fps) {
+    const int MAX_OBJECTS = 100;
+    svObjData_t results[MAX_OBJECTS];
+
+    // Calculate delay based on FPS
+    int delay_ms = 1000 / fps;
+    cout << "[CLOTH] Thread started for " << camera_amount << " cameras at " << fps << " FPS" << endl;
+
+    // Open video file
+    VideoCapture cap(video_path);
+    if (!cap.isOpened()) {
+        cerr << "[CLOTH] Failed to open video: " << video_path << endl;
+        return;
+    }
+
+    // Get video dimensions
+    int width = static_cast<int>(cap.get(CAP_PROP_FRAME_WIDTH));
+    int height = static_cast<int>(cap.get(CAP_PROP_FRAME_HEIGHT));
+    cout << "[CLOTH] Video size: " << width << "x" << height << endl;
+
+    // API 1: Initialize the model
+    svCreate_ObjectModules(functions::YOLO_CLOTH_COLOR, 128, engine_path1, engine_path2, 0.3f, log_file);
+
+    // API 2: create a ROI for each camera (same as YOLO: right half of screen)
+    float points_x[] = {0.5f, 1.0f, 1.0f, 0.5f};
+    float points_y[] = {0.0f, 0.0f, 1.0f, 1.0f};
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svCreate_ROI(camera_id, functions::YOLO_CLOTH_COLOR, 0, width, height, points_x, points_y, 4);
+    }
+
+    Mat frame_bgr, frame_yuv;
+    uint8_t* yuv_data = nullptr;
+
+    // Processing loop
+    while (!should_stop && camera_amount > 0) {
+        // Read frame from video
+        if (!cap.read(frame_bgr)) {
+            // End of video, restart from beginning
+            cap.set(CAP_PROP_POS_FRAMES, 0);
+            continue;
+        }
+
+        // Convert BGR to YUV420
+        cvtColor(frame_bgr, frame_yuv, COLOR_BGR2YUV_I420);
+        yuv_data = frame_yuv.data;
+
+        auto loop_start = chrono::high_resolution_clock::now();
+        // API 3: Process yuv image for all cameras
+        int q_size = 0;
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            q_size = svObjectModules_inputImageYUV(functions::YOLO_CLOTH_COLOR, camera_id, yuv_data, width, height, 3, MAX_OBJECTS);
+            if (q_size < 1) {
+                cerr << "[CLOTH] Failed to process image for camera " << camera_id << endl;
+                break;
+            }
+        }
+
+        // API 4: Get results for all cameras
+        for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+            int num = svObjectModules_getResult(functions::YOLO_CLOTH_COLOR, camera_id, results, MAX_OBJECTS, true);
+            if (num == -1) {
+                cerr << "[CLOTH] Thread have been stopped for camera " << camera_id << endl;
+                should_stop = true;
+                break;
+            }
+        }
+        auto loop_end = chrono::high_resolution_clock::now();
+        auto inference_time = chrono::duration_cast<chrono::microseconds>(loop_end - loop_start).count();
+        double actual_fps = (1000000.0 / inference_time) * camera_amount;
+        double per_camera_fps = 1000000.0 / inference_time;
+        cout << "[CLOTH] Inference time: " << inference_time << " us, Actual FPS: " << fixed << setprecision(1) << actual_fps
+             << " (per camera: " << per_camera_fps << ")" << endl;
+    }
+
+    // Cleanup
+    for (int camera_id = 0; camera_id < camera_amount; camera_id++) {
+        svRemove_ROIandWall(camera_id, functions::YOLO_CLOTH_COLOR, 0);
+    }
+    cap.release();
+    cout << "\n[CLOTH] Thread finished for " << camera_amount << " cameras" << endl;
+}
+
 int main(int argc, char* argv[]) {
     const char* yolo_engine_path1 = "weights/detection_model";
     const char* yolo_engine_path2 = "weights/detection_model";
@@ -269,20 +353,25 @@ int main(int argc, char* argv[]) {
     const char* fall_engine_path2 = "weights/fall_model";
     const char* climb_engine_path1 = "weights/pose_model";
     const char* climb_engine_path2 = "weights/pose_model";
+    const char* cloth_engine_path1 = "weights/detection_model";
+    const char* cloth_engine_path2 = "weights/clothes_model";
     const char* yolo_video_path = "videos/yolo.mp4";
     const char* fall_video_path = "videos/fall.mp4";
     const char* climb_video_path = "videos/climb.mp4";
+    const char* cloth_video_path = "videos/clothes.mp4";
     const char* log_file = "log/log.log";
 
     // FPS settings for each thread
     int yolo_fps = 5;
     int fall_fps = 2;
     int climb_fps = 10;
+    int cloth_fps = 5;
 
     // Camera amount settings - can be overridden by command line arguments
-    int yolo_camera_amount = 20;   // Default: disabled
-    int fall_camera_amount = 10;  // Default: 30 cameras
-    int climb_camera_amount = 10;  // Default: disabled
+    int yolo_camera_amount = 10;
+    int fall_camera_amount = 10;
+    int climb_camera_amount = 10;
+    int cloth_camera_amount = 10;
 
     // Parse command line arguments
     if (argc > 1) {
@@ -297,20 +386,27 @@ int main(int argc, char* argv[]) {
         climb_camera_amount = atoi(argv[3]);
         cout << "CLIMB camera amount set to: " << climb_camera_amount << " (from command line)" << endl;
     }
+    if (argc > 4) {
+        cloth_camera_amount = atoi(argv[4]);
+        cout << "CLOTH camera amount set to: " << cloth_camera_amount << " (from command line)" << endl;
+    }
 
     cout << "\n=== Configuration ===" << endl;
     cout << "YOLO engines: " << yolo_engine_path1 << ", " << yolo_engine_path2 << endl;
     cout << "FALL engines: " << fall_engine_path1 << ", " << fall_engine_path2 << endl;
     cout << "CLIMB engines: " << climb_engine_path1 << ", " << climb_engine_path2 << endl;
+    cout << "CLOTH engines: " << cloth_engine_path1 << ", " << cloth_engine_path2 << endl;
     cout << "YOLO video: " << yolo_video_path << " at " << yolo_fps << " FPS" << endl;
     cout << "FALL video: " << fall_video_path << " at " << fall_fps << " FPS" << endl;
     cout << "CLIMB video: " << climb_video_path << " at " << climb_fps << " FPS" << endl;
-    cout << "\nStarting three detection threads..." << endl;
+    cout << "CLOTH video: " << cloth_video_path << " at " << cloth_fps << " FPS" << endl;
+    cout << "\nStarting detection threads..." << endl;
 
     // Create three threads with camera_amount parameter
     thread t_yolo(yolo_thread, yolo_engine_path1, yolo_engine_path2, yolo_video_path, log_file, yolo_camera_amount, yolo_fps);
     thread t_fall(fall_thread, fall_engine_path1, fall_engine_path2, fall_video_path, log_file, fall_camera_amount, fall_fps);
     thread t_climb(climb_thread, climb_engine_path1, climb_engine_path2, climb_video_path, log_file, climb_camera_amount, climb_fps);
+    thread t_cloth(cloth_thread, cloth_engine_path1, cloth_engine_path2, cloth_video_path, log_file, cloth_camera_amount, cloth_fps);
 
     // Let threads run for some time
     cout << "\nThreads running... Press Enter to stop." << endl;
@@ -324,6 +420,7 @@ int main(int argc, char* argv[]) {
     t_yolo.join();
     t_fall.join();
     t_climb.join();
+    t_cloth.join();
 
     cout << "All threads finished." << endl;
     return 0;

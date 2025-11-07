@@ -10,6 +10,7 @@
 
 using namespace std;
 namespace climb {
+    extern unique_ptr<YOLOv11> model;
     extern ICudaEngine* engine;
     extern IExecutionContext* context;
     extern thread inferenceThread; // 用於執行 inference_thread 的執行緒
@@ -21,7 +22,7 @@ namespace climb {
     extern vector<queue<OutputData>> outputQueues;
     extern vector<unique_ptr<mutex>> outputQueueMutexes;
     extern vector<unique_ptr<condition_variable>> outputQueueConditions;
-    void createModelAndStartThread(const char* engine_path, int camera_amount, float conf_threshold, const char* logFilePath);
+    void createModelAndStartThread(const char* engine_path, const char* engine_path2, int camera_amount, float conf_threshold, const char* logFilePath);
     void inference_thread();
 
     extern Logger logger;

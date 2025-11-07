@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
     file.seekg(0, std::ios::end);
     size_t fileSize = file.tellg();
     file.seekg(0, std::ios::beg);
-    uint8_t* frame = new uint8_t[fileSize];
+    uint8_t* frame = new uint8_t[fileSize];  // release at yolov11_dll svObjectModules_getResult()
     file.read(reinterpret_cast<char*>(frame), fileSize);
     file.close();
 

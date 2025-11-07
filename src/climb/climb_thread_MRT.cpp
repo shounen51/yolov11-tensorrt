@@ -1,10 +1,11 @@
-#include "climb_thread.h"
+#include "climb_thread_MRT.h"
 #include "preprocess.h"
 #include "logging.h"
 #include "YUV420ToRGB.h"
 #include "Logger.h"
 #include "yolov11_dll.h"
 #include "ColorClassifier.h"
+#include "yolov11.h"
 #include <cuda_utils.h>
 #include <opencv2/opencv.hpp>
 #include <cmath>
@@ -20,6 +21,7 @@ constexpr int INPUT_W = 640;
 constexpr int INPUT_H = 640;
 
 namespace climb {
+    std::unique_ptr<YOLOv11> model;
     ICudaEngine* engine;
     IExecutionContext* context;
     queue<InputData> inputQueue;
@@ -110,10 +112,8 @@ namespace climb {
                 }
             }
         }
-
         return false; // 所有ROI都沒有超過閾值
     }
-
 
     float threshold = 0.3;
     int gpu_rgb_buffer_size = 1920*1920*3*sizeof(uint8_t); //!< The size of the device buffer for RGB input
@@ -136,7 +136,7 @@ namespace climb {
         return buffer;
     }
 
-    void createModelAndStartThread(const char* engine_path, int camera_amount, float conf_threshold, const char* logFilePath) {
+    void createModelAndStartThread(const char* engine_path, const char* engine_path2, int camera_amount, float conf_threshold, const char* logFilePath) {
         AILogger::init(std::string(logFilePath));
         if (std::string(logFilePath) == "") {
             AILOG_INFO("No log file path specified, using default console logging.");
@@ -144,6 +144,8 @@ namespace climb {
         } else {
             AILOG_INFO("Logging to file: " + std::string(logFilePath));
         }
+        AILOG_INFO("Initializing yolo model with engine: " + std::string(engine_path2));
+        model = std::make_unique<YOLOv11>(engine_path2, conf_threshold, logger);
         AILOG_INFO("Initializing skeleton model with engine: " + std::string(engine_path));
         threshold = conf_threshold;
         auto runtime = createInferRuntime(logger);
@@ -230,9 +232,13 @@ namespace climb {
             // 將 yuv 轉換成 rgb
             yuv420toRGBInPlace(gpu_yuv_buffer, input.width, input.height, gpu_rgb_buffer, stream);
 
+            model->preprocess(gpu_rgb_buffer, input.width, input.height, false); // yolo
             cuda_preprocess(gpu_rgb_buffer, input.width, input.height,
-                            static_cast<float*>(buffers[0]), INPUT_W, INPUT_H, stream);
+                            static_cast<float*>(buffers[0]), INPUT_W, INPUT_H, stream); //
+            model->infer(); // yolo
+            std::vector<Detection> detections; // yolo
             context->executeV2(buffers);
+            model->postprocess(detections); // yolo
             cudaMemcpy(output, buffers[1], output_size * sizeof(float), cudaMemcpyDeviceToHost);
             vector<Rect> boxes;
             vector<int> class_ids;
@@ -274,7 +280,7 @@ namespace climb {
             int unpad_h = static_cast<int>(r * input.height);
             int pad_x = (INPUT_W - unpad_w) / 2;
             int pad_y = (INPUT_H - unpad_h) / 2;
-            svObjData_t* output = new svObjData_t[count];
+            svObjData_t* output = new svObjData_t[count];  // release at yolov11_dll svObjectModules_getResult()
 
             // 初始化所有元素
             for (int i = 0; i < count; ++i) {
@@ -289,8 +295,16 @@ namespace climb {
                 }
             }
 
+            bool skip_climb_detection = false; // 是否要略過偵測
+            // 取得 車廂位置
+            for (auto& det : detections) {
+                if (det.class_id == static_cast<int>(CustomClass::TRAIN)) {
+                    if (det.bbox.height > 0.7*unpad_h) skip_climb_detection = true;
+                }
+            }
             // 檢查 MRTRedlightROI 的顏色比例
-            bool skip_climb_detection = checkMRTRedlightROI(input.camera_id, gpu_rgb_buffer, input.width, input.height);
+            skip_climb_detection |= checkMRTRedlightROI(input.camera_id, gpu_rgb_buffer, input.width, input.height);
+            if (skip_climb_detection) AILOG_INFO("frame:" + std::to_string(frame_count) + " Skipping climb detection");
 
             // 如果 roi_map_ptr 不為空，則取得指針
             ROI* roi_ptr = nullptr;
@@ -335,7 +349,6 @@ namespace climb {
                 output[i].climb[sizeof(output[i].climb) - 1] = '\0'; // 確保字串結尾
 
                 if (skip_climb_detection) {
-                    AILOG_INFO("frame:" + std::to_string(frame_count) + " Skipping climb detection");
                     continue; // 跳過爬牆偵測
                 }
 

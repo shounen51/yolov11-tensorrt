@@ -153,6 +153,6 @@ YOLOV11_API void svRemove_CrossingLine(int camera_id, int function_id, int roi_i
 /**
  * 清理資源
  */
-YOLOV11_API void release();
+YOLOV11_API void svRelease();
 
 }

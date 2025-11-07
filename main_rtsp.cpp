@@ -582,7 +582,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
                 break;
             case functions::CROWD:
                 char buf[64];
-                snprintf(buf, sizeof(buf), "crowd %.2f", obj.confidence);
+                snprintf(buf, sizeof(buf), "crowd %d %.2f", obj.track_id, obj.confidence);
                 label = string(buf);
                 // Use red if ROI triggered, else green
                 if (obj.in_roi_id != -1) color = Scalar(0,0,255); else color = Scalar(0,255,0);
@@ -670,7 +670,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             break;
         case functions::CLIMB:
             engine_path1 = "weights/pose_model";
-            engine_path2 = "weights/pose_model";
+            engine_path2 = "weights/detection_model";
             break;
         case functions::CROWD:
             engine_path1 = "weights/detection_model";
@@ -1025,7 +1025,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     // Cleanup
     cap.release();
     destroyAllWindows();
-
+    svRelease();
     // Remove ROI
     svRemove_ROIandWall(camera_id, selected_function, 0);
 

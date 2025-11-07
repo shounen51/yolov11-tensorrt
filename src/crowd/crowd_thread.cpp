@@ -107,7 +107,7 @@ namespace Crowd {
 
             if (roi_map.empty()) {
                 // 無 ROI -> 不分析，回傳空輸出
-                svObjData_t* output = new svObjData_t[0];
+                svObjData_t* output = new svObjData_t[0]; // release at yolov11_dll svObjectModules_getResult()
                 {
                     std::lock_guard<std::mutex> lk(*outputQueueMutexes[input.camera_id]);
                     outputQueues[input.camera_id].push({output, 0});
@@ -150,7 +150,7 @@ namespace Crowd {
 
             // 若沒有任何 person，也直接返回空結果
             if (person_boxes.empty()) {
-                svObjData_t* output = new svObjData_t[0];
+                svObjData_t* output = new svObjData_t[0]; // release at yolov11_dll svObjectModules_getResult()
                 {
                     std::lock_guard<std::mutex> lk(*outputQueueMutexes[input.camera_id]);
                     outputQueues[input.camera_id].push({output, 0});
@@ -160,8 +160,9 @@ namespace Crowd {
                 continue;
             }
 
-            // 為每個 ROI 計算覆蓋率 (person 矩形的 union 與 ROI mask 的交集 / ROI 面積)
-            std::vector<std::pair<int,float>> roi_coverages; // roi_id, coverage
+            // 為每個 ROI 計算覆蓋率與人數
+            struct RoiCoverage { int roi_id; float coverage; int person_count; };
+            std::vector<RoiCoverage> roi_coverages; // roi_id, coverage, person_count
             roi_coverages.reserve(roi_map.size());
 
             for (auto& roi_pair : roi_map) {
@@ -171,6 +172,7 @@ namespace Crowd {
 
                 // 建立一個臨時遮罩，標記所有 person box 的 union
                 cv::Mat union_mask = cv::Mat::zeros(roi.mask.size(), CV_8U);
+                int person_count = 0;
                 for (const auto& pb : person_boxes) {
                     int rx1 = std::clamp(int(pb.x1 * roi.mask.cols), 0, roi.mask.cols - 1);
                     int ry1 = std::clamp(int(pb.y1 * roi.mask.rows), 0, roi.mask.rows - 1);
@@ -178,26 +180,34 @@ namespace Crowd {
                     int ry2 = std::clamp(int(pb.y2 * roi.mask.rows), 0, roi.mask.rows - 1);
                     if (rx2 <= rx1 || ry2 <= ry1) continue;
                     cv::rectangle(union_mask, cv::Rect(cv::Point(rx1, ry1), cv::Point(rx2, ry2)), cv::Scalar(255), cv::FILLED);
+
+                    // 以 bbox 底邊中點是否在 ROI 內作為是否計入該 ROI 的人數
+                    int bx = std::clamp(int(((pb.x1 + pb.x2) * 0.5f) * roi.mask.cols), 0, roi.mask.cols - 1);
+                    int by = std::clamp(int(pb.y2 * roi.mask.rows), 0, roi.mask.rows - 1);
+                    if (roi.mask.at<uchar>(by, bx) != 0) {
+                        person_count++;
+                    }
                 }
                 cv::Mat intersection_mask;
                 cv::bitwise_and(union_mask, roi.mask, intersection_mask);
                 int covered = cv::countNonZero(intersection_mask);
                 int total = cv::countNonZero(roi.mask);
                 float coverage = (total > 0) ? (float)covered / (float)total : 0.f;
-                roi_coverages.emplace_back(roi_id, coverage);
+                roi_coverages.push_back({roi_id, coverage, person_count});
             }
 
             // 建立輸出：每個覆蓋率 > 0.3 的 ROI 產生一個預設物件
             std::vector<svObjData_t> temp_outputs; temp_outputs.reserve(roi_coverages.size());
             for (auto& rc : roi_coverages) {
-                if (rc.second > 0.3f) {
-                    auto& roi = roi_map[rc.first];
+                if (rc.coverage > 0.3f) {
+                    auto& roi = roi_map[rc.roi_id];
                     float bx1, by1, bx2, by2; roiBoundingBox(roi.points, bx1, by1, bx2, by2);
                     svObjData_t obj; svObjData_init(&obj);
                     obj.bbox_xmin = bx1; obj.bbox_ymin = by1; obj.bbox_xmax = bx2; obj.bbox_ymax = by2;
                     obj.class_id = static_cast<int>(CustomClass::PERSON); // 使用 person 類別代表人群
-                    obj.confidence = rc.second; // 覆蓋率作為 confidence
-                    obj.in_roi_id = rc.first;
+                    obj.confidence = rc.coverage; // 覆蓋率作為 confidence
+                    obj.in_roi_id = rc.roi_id;
+                    obj.track_id = rc.person_count; // 借用 track_id 欄位存該 ROI 的人數
                     strncpy(obj.color_label_first, "", sizeof(obj.color_label_first)-1);
                     strncpy(obj.color_label_second, "", sizeof(obj.color_label_second)-1);
                     strncpy(obj.pose, "none", sizeof(obj.pose)-1);
@@ -207,7 +217,7 @@ namespace Crowd {
             }
 
             int out_count = std::min((int)temp_outputs.size(), input.max_output);
-            svObjData_t* output = new svObjData_t[out_count];
+            svObjData_t* output = new svObjData_t[out_count]; // release at yolov11_dll svObjectModules_getResult()
             for (int i = 0; i < out_count; ++i) output[i] = temp_outputs[i];
 
             {
