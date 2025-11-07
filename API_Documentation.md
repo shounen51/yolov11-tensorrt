@@ -8,7 +8,22 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 
 **當前版本**：1.2.0
 
-各功能使用模型：
+### 更新內容：
+重大改動：
+
+1. 新增功能 -【cloth】
+用衣服辨識模型精確地辨識衣服區域再進行顏色辨識，其餘功能和【YOLO_COLOR】功能相同
+2. 修改功能 -【CLIMB】
+CLIMB 功能改成雙模型功能，engine_path2 參數成為必要，需要代入 detection_model 位置
+3. 清除資源的 function 名稱由 release() 改為 svRelease()
+
+其餘改動：
+
+1. 內部功能修正：因為已修正了模型，移除了過濾模型錯誤標示大框的機制
+2. yolo 模型改善：改進後處理速度，相關功能 fps 上升
+3. climb功能修改：新增了列車偵測的功能，當偵測列車已進站會開啟過濾機制如同紅燈roi偵測燈亮，因為增加了一個 yolo 的運行所以速度降低
+
+### 各功能使用模型：
  - YOLO_COLOR:
     1. detection_model
  - FALL:
@@ -24,7 +39,7 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
     1. detection_model
     2. clothes_model
 
-使用 threshold：
+### 使用 threshold：
  - YOLO_COLOR:
     - threshold: 0.5
  - FALL:
@@ -35,14 +50,6 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
     - threshold: 0.3
  - YOLO_CLOTH_COLOR:
     - threshold: 0.5
-
-更新內容：
-
-1. 新增功能 -【cloth】
-用衣服辨識模型精確地辨識衣服區域再進行顏色辨識，其餘功能和【YOLO_COLOR】功能相同
-2. 內部功能修正：因為已修正了模型，移除了過濾模型錯誤標示大框的機制
-3. yolo 模型改善：改進後處理速度，相關功能 fps 上升
-4. climb功能修改：新增了列車偵測的功能，當偵測列車已進站會開啟過濾機制如同紅燈roi偵測燈亮，因為增加了一個 yolo 的運行所以速度降低
 
 ## 注意事項
 
