@@ -16,6 +16,7 @@ YOLOv11 TensorRT DLL 提供了物件檢測、跌倒檢測、攀爬檢測等功�
 2. 修改功能 -【CLIMB】
 CLIMB 功能改成雙模型功能，engine_path2 參數成為必要，需要代入 detection_model 位置
 3. 清除資源的 function 名稱由 release() 改為 svRelease()
+4. detection 模型從 2.3.0 版本開始新增偵測項目 pushchair，class id 為 82，請參考下方 class_id 類別對應表
 
 其餘改動：
 
@@ -148,6 +149,7 @@ typedef struct svResultProjectObject_DataType {
 75 - vase
 80 - wheelchair
 81 - person_on_wheelchair
+82 - pushchair
 ```
 
 ## 核心 API 函數

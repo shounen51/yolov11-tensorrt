@@ -3,6 +3,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include <thread>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -263,7 +264,6 @@ void onMouse(int event, int x, int y, int flags, void* userdata) {
             svRemove_CrossingLine(current_camera_id, current_function, 0);
             cout << "[MOUSE] Crossing Line - Cleared all points and removed crossing line" << endl;
         }
-
         point_clicked = false;
     }
 }// Helper function to parse function from string
@@ -548,6 +548,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             case 81:
                 color = Scalar(255, 128, 0); // 橙色 - fire hydrant
                 break;
+            case 82:
+                color = Scalar(64, 0, 255); // 紫色 - pushchair
+                break;
             default:
                 color = Scalar(128, 128, 128); // 灰色 - 預設
                 break;
@@ -556,8 +559,9 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         // 根據不同功能調整標籤和顏色
         switch (function_type) {
             case functions::YOLO_COLOR:
-                label = string("") + obj.color_label_first +
-                        " " + obj.color_label_second;
+                label = to_string(obj.track_id);
+                // label = string("") + obj.color_label_first +
+                //         " " + obj.color_label_second;
                 if (obj.in_roi_id != -1) {
                     color = Scalar(0, 0, 255); // 紅色 - 在ROI內的物件
                 }
@@ -856,7 +860,7 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
         }
         auto end_time = chrono::high_resolution_clock::now();
         auto inference_time = chrono::duration_cast<chrono::milliseconds>(end_time - start_time).count();
-
+        cout << "[INFO] Detecte: " << num_objects << " objects, Inference time: " << inference_time << " ms" << endl;
         // Draw detection results on frame
         drawDetectionResults(frame_bgr, results, num_objects, selected_function);
 
@@ -869,8 +873,8 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
             // Count objects that trigger red boxes (in ROI)
             switch (selected_function) {
                 case functions::YOLO_COLOR:
-                    if (obj.in_roi_id != -1 && obj.class_id == 0) {
-                        red_box_count++;
+                    if (obj.crossing_line_id != -1) {
+                        if (obj.crossing_line_direction > 0) red_box_count += obj.crossing_line_direction;
                     }
                     break;
                 case functions::FALL:
@@ -1035,6 +1039,10 @@ void drawDetectionResults(Mat& frame, svObjData_t* results, int num_objects, fun
     if (is_video_file) {
         cout << "[INFO] Video processing completed successfully" << endl;
     }
+
+    // Add a small wait before exiting to ensure all CUDA/TRT cleanups complete
+    // cout << "[INFO] Waiting 5s before exit..." << endl;
+    // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 
     return 0;
 }

@@ -183,7 +183,7 @@ namespace YoloWithColor {
                     }
                     cv::Mat personCrop = rgb_image(Rect(crop_x1, crop_y1, crop_x2 - crop_x1, crop_y2 - crop_y1));
 
-                    vector<unsigned char> color = colorClassifier.classifyStatistics(personCrop, 500, cv::COLOR_BGR2HSV);
+                    vector<unsigned char> color = colorClassifier.classifyStatistics(personCrop, 500, cv::COLOR_RGB2HSV);
                     int maxIndex = 0;
                     int maxCount = 0;
                     for (int j = 0; j < color.size(); j++) {
@@ -230,11 +230,6 @@ namespace YoloWithColor {
                     }
                 }
             }
-            std::string log_message = "frame:" + std::to_string(frame_counter) + " Inference for camera " + std::to_string(input.camera_id) + " completed. Detections: " + std::to_string(count);
-            for (const auto& roi_pair : roi_people_count) {
-                log_message += ", ROI " + std::to_string(roi_pair.first) + ": " + std::to_string(roi_pair.second) + " people";
-            }
-            AILOG_DEBUG(log_message);
 
             // 應用目標追蹤
             if (input.camera_id < trackers.size() && crossing_line_map.size() > 0) {
@@ -327,6 +322,11 @@ namespace YoloWithColor {
                 }
             }
 
+            std::string log_message = "frame:" + std::to_string(frame_counter) + " Inference for camera " + std::to_string(input.camera_id) + " completed. Detections: " + std::to_string(count);
+            for (const auto& roi_pair : roi_people_count) {
+                log_message += ", ROI " + std::to_string(roi_pair.first) + ": " + std::to_string(roi_pair.second) + " people";
+            }
+            AILOG_DEBUG(log_message);
             // 將結果放入 outputQueue
             {
                 std::lock_guard<std::mutex> lock(*outputQueueMutexes[input.camera_id]);

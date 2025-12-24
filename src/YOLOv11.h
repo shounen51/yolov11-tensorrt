@@ -28,7 +28,10 @@ enum class CustomClass : int {
     WINE_GLASS = 14,
     CHAIR = 15,
     COUCH = 16,
-    VASE = 17
+    VASE = 17,
+    PUSHCHAIR = 18,
+    CAT = 19,
+    DOG = 20,
 };
 
 // COCO standard classes (82 classes)
@@ -114,7 +117,8 @@ enum class CocoClass : int {
     HAIR_DRIER = 78,
     TOOTHBRUSH = 79,
     WHEELCHAIR = 80,
-    PERSON_ON_WHEELCHAIR = 81
+    PERSON_ON_WHEELCHAIR = 81,
+    PUSHCHAIR = 82
 };
 
 // Custom model class names mapping
@@ -136,7 +140,8 @@ static const unordered_map<int, int> CUSTOM_to_COCO = {
     {static_cast<int>(CustomClass::WINE_GLASS), static_cast<int>(CocoClass::WINE_GLASS)},
     {static_cast<int>(CustomClass::CHAIR), static_cast<int>(CocoClass::CHAIR)},
     {static_cast<int>(CustomClass::COUCH), static_cast<int>(CocoClass::COUCH)},
-    {static_cast<int>(CustomClass::VASE), static_cast<int>(CocoClass::VASE)}
+    {static_cast<int>(CustomClass::VASE), static_cast<int>(CocoClass::VASE)},
+    {static_cast<int>(CustomClass::PUSHCHAIR), static_cast<int>(CocoClass::PUSHCHAIR)}
 };
 
 struct Detection
@@ -156,7 +161,7 @@ public:
     uint8_t* getGpuRgbBuffer(int, int);
     int input_w;
     int input_h;
-    int num_classes = 18;
+    int num_classes = 19;
 
     void preprocess(uint8_t* gpu_rgb_buffer, int im0_w, int im0_h, bool block=true);
     void infer();

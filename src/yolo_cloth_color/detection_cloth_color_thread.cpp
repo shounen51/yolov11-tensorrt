@@ -208,7 +208,7 @@ namespace YoloWithClothColor {
                             int maxIndex = 0;
                             int maxCount = 0;
                             for (int j = 0; j < color.size(); j++) {
-                                if (color[j] > maxCount && ColorLabelsString[j] != "unknown") {
+                                if (color[j] > maxCount && ColorLabelsString[j] != ColorLabelsString[0]) {
                                     maxCount = color[j];
                                     maxIndex = j;
                                 }
@@ -224,7 +224,7 @@ namespace YoloWithClothColor {
                             int maxIndex = 0;
                             int maxCount = 0;
                             for (int j = 0; j < color.size(); j++) {
-                                if (color[j] > maxCount && ColorLabelsString[j] != "unknown") {
+                                if (color[j] > maxCount && ColorLabelsString[j] != ColorLabelsString[0]) {
                                     maxCount = color[j];
                                     maxIndex = j;
                                 }
@@ -239,7 +239,7 @@ namespace YoloWithClothColor {
                     int maxIndex = 0;
                     int maxCount = 0;
                     for (int j = 0; j < color.size(); j++) {
-                        if (color[j] > maxCount && ColorLabelsString[j] != "unknown") {
+                        if (color[j] > maxCount && ColorLabelsString[j] != ColorLabelsString[0]) {
                             maxCount = color[j];
                             maxIndex = j;
                         }

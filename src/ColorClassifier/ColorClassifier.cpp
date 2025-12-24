@@ -275,7 +275,9 @@ std::vector<unsigned char> HSVColorClassifier::classifyStatistics(cv::Mat image,
         for (int _i = 0; _i < result_f.size(); _i++)
         {
             float val = result_f[_i] * scale + 0.5f;  // 改為 0.5f 以獲得更好的四捨五入
-            result[_i] = unsigned char(val > 255 ? 255 : val);
+            // result[_i] = unsigned char(val > 255 ? 255 : val);
+            unsigned char mappedVal = static_cast<unsigned char>(val > 255 ? 255 : val);
+            result[_i] = mappedVal;
         }
     }
 
@@ -297,23 +299,139 @@ void HSVColorClassifier::setDefaultColorRange()
 
         // 這裡的範圍請依 HSV 空間調整（範例：OpenCV HSV H:0~180, S:0~255, V:0~255）
 
-        ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  80), color_black ), // black
-        ColorRange(Color_t(  0,   0,  81), Color_t(180,  80, 188), color_gray  ), // gray
-        ColorRange(Color_t(  0,   0, 189), Color_t(180,  50, 255), color_white ), // white
+        // //-------------------------------------------------- Hex Color Code Simplified V1 --------------------------------------------
+        // // ------- Red -------
+        // ColorRange(Color_t(0, 20, 128), Color_t(10, 255, 255), color_red),
+        // ColorRange(Color_t(170, 20, 128), Color_t(180, 255, 255), color_red),
 
-        ColorRange(Color_t(  0,  60, 127), Color_t(  6, 255, 255), color_red   ), // red (low H)
-        ColorRange(Color_t(164,  60, 127), Color_t(180, 255, 255), color_red   ), // red (high H)
-        ColorRange(Color_t(  7, 178, 178), Color_t( 15, 255, 255), color_orange), // orange
-        ColorRange(Color_t(  7, 127,  90), Color_t( 20, 255, 178), color_brown ), // brown
-        ColorRange(Color_t(  7,  38, 217), Color_t( 20,  77, 255), color_brown ), // brown
-        ColorRange(Color_t( 20,  60,  80), Color_t( 34, 255, 255), color_yellow), // yellow
-        ColorRange(Color_t( 35,  60,  80), Color_t( 77, 255, 255), color_green ), // green
-        ColorRange(Color_t( 78,  60,  80), Color_t( 90, 255, 178), color_green ), // green
-        ColorRange(Color_t( 78,  80, 179), Color_t( 90, 255, 255), color_blue  ), // blue
-        ColorRange(Color_t( 90,  80,  85), Color_t(120, 255, 255), color_blue  ), // blue
-        ColorRange(Color_t(120, 216, 179), Color_t(127, 255, 255), color_blue  ), // blue
-        ColorRange(Color_t(120,  60, 112), Color_t(127, 215, 255), color_purple), // purple
-        ColorRange(Color_t(128,  60, 153), Color_t(163, 255, 255), color_purple), // purple
+        // // ------- Orange -------
+        // ColorRange(Color_t(11, 36, 128), Color_t(20, 255, 255), color_orange),
+
+        // // ------- Brown -------
+        // ColorRange(Color_t(10, 128, 64), Color_t(30, 255, 192), color_brown),
+
+        // // ------- Yellow -------
+        // ColorRange(Color_t(21, 36, 128), Color_t(35, 255, 255), color_yellow),
+
+        // // ------- Green -------
+        // ColorRange(Color_t(36, 36, 128), Color_t(85, 255, 255), color_green),
+
+        // // ------- Cyan / Aqua -------
+        // ColorRange(Color_t(86, 36, 128), Color_t(100, 255, 255), color_cyan),
+
+        // // ------- Blue -------
+        // ColorRange(Color_t(101, 36, 128), Color_t(125, 255, 255), color_blue),
+
+        // // ------- Purple -------
+        // ColorRange(Color_t(126, 36, 128), Color_t(160, 255, 255), color_purple),
+
+        // // ------- Pink -------
+        // ColorRange(Color_t(161, 36, 128), Color_t(165, 255, 255), color_pink),
+
+        // // ------- Gray -------
+        // ColorRange(Color_t(0, 0, 51), Color_t(166, 36, 192), color_gray),
+
+        // // ------- White -------
+        // ColorRange(Color_t(0, 0, 193), Color_t(166, 36, 255), color_white),
+
+        // // ------- Black -------
+        // ColorRange(Color_t(0, 0, 0), Color_t(179, 255, 50), color_black)
+
+        //-------------------------------------------------- Hex Color Code Simplified V2 --------------------------------------------
+        // ------- Red -------
+        ColorRange(Color_t(0,   42, 50), Color_t(9, 255, 255), color_red),
+        ColorRange(Color_t(170, 42, 50), Color_t(180, 255, 255), color_red),
+
+        // ------- Orange -------
+        ColorRange(Color_t(10,  42, 50), Color_t(23, 255, 255), color_orange),
+
+        // ------- Brown -------
+        ColorRange(Color_t(10, 128, 50), Color_t(30, 255, 200), color_brown),
+
+        // ------- Yellow -------
+        ColorRange(Color_t(24, 42, 128), Color_t(35, 255, 255), color_yellow),
+
+        // ------- Green -------
+        ColorRange(Color_t(36, 42, 128), Color_t(85, 255, 255), color_green),
+
+        // ------- Cyan / Aqua -------
+        ColorRange(Color_t(86, 42, 128), Color_t(100, 255, 255), color_cyan),
+
+        // ------- Blue -------
+        ColorRange(Color_t(101, 42, 128), Color_t(130, 255, 255), color_blue),
+
+        // ------- Purple -------
+        ColorRange(Color_t(131, 42, 128), Color_t(160, 255, 255), color_purple),
+
+        // ------- Pink -------
+        ColorRange(Color_t(161, 42, 128), Color_t(169, 255, 255), color_pink),       
+
+        // ------- Gray -------
+        ColorRange(Color_t(0, 0, 64), Color_t(180, 42, 192), color_gray),
+
+        // ------- White -------
+        ColorRange(Color_t(0, 0, 193), Color_t(180, 42, 255), color_white),
+
+        // ------- Black -------
+        ColorRange(Color_t(0, 0, 0), Color_t(180, 255, 63), color_black),
+
+        // //-------------------------------------------------- Combine V3 --------------------------------------------
+        // // ------- Red -------
+        // ColorRange(Color_t(0, 20, 128), Color_t(9, 255, 255), color_red),
+        // ColorRange(Color_t(170, 20, 128), Color_t(180, 255, 255), color_red),
+
+        // // ------- Orange -------
+        // ColorRange(Color_t(10, 45, 128), Color_t(20, 255, 255), color_orange),
+
+        // // ------- Brown -------
+        // ColorRange(Color_t(10, 128, 64), Color_t(30, 255, 192), color_brown),
+
+        //  // ------- Yellow -------
+        // ColorRange(Color_t(21, 45, 128), Color_t(35, 255, 255), color_yellow),
+
+        // // ------- Green -------
+        // ColorRange(Color_t(36, 45, 128), Color_t(85, 255, 255), color_green),
+
+        // // ------- Cyan / Aqua -------
+        // ColorRange(Color_t(86, 45, 128), Color_t(100, 255, 255), color_cyan),
+
+        // // ------- Blue -------
+        // ColorRange(Color_t(101, 45, 128), Color_t(125, 255, 255), color_blue),
+
+        // // ------- Purple -------
+        // ColorRange(Color_t(126, 45, 128), Color_t(160, 255, 255), color_purple),
+
+        // // ------- Pink -------
+        // ColorRange(Color_t(161, 45, 128), Color_t(169, 255, 255), color_pink),       
+
+        // // ------- Gray -------
+        // ColorRange(Color_t(0, 0, 51), Color_t(170, 45, 192), color_gray),
+
+        // // ------- White -------
+        // ColorRange(Color_t(0, 0, 193), Color_t(170, 45, 255), color_white),
+
+        // // ------- Black -------
+        // ColorRange(Color_t(0, 0, 0), Color_t(179, 255, 50), color_black),
+
+        
+        // Jeff & Joseph
+        // ColorRange(Color_t(  0,   0,   0), Color_t(180, 178,  80), color_black ), // black
+        // ColorRange(Color_t(  0,   0,  81), Color_t(180,  80, 188), color_gray  ), // gray
+        // ColorRange(Color_t(  0,   0, 189), Color_t(180,  50, 255), color_white ), // white
+
+        // ColorRange(Color_t(  0,  60, 127), Color_t(  6, 255, 255), color_red   ), // red (low H)
+        // ColorRange(Color_t(164,  60, 127), Color_t(180, 255, 255), color_red   ), // red (high H)
+        // ColorRange(Color_t(  7, 178, 178), Color_t( 15, 255, 255), color_orange), // orange
+        // ColorRange(Color_t(  7, 127,  90), Color_t( 20, 255, 178), color_brown ), // brown
+        // ColorRange(Color_t(  7,  38, 217), Color_t( 20,  77, 255), color_brown ), // brown
+        // ColorRange(Color_t( 20,  60,  80), Color_t( 34, 255, 255), color_yellow), // yellow
+        // ColorRange(Color_t( 35,  60,  80), Color_t( 77, 255, 255), color_green ), // green
+        // ColorRange(Color_t( 78,  60,  80), Color_t( 90, 255, 178), color_green ), // green
+        // ColorRange(Color_t( 78,  80, 179), Color_t( 90, 255, 255), color_blue  ), // blue
+        // ColorRange(Color_t( 90,  80,  85), Color_t(120, 255, 255), color_blue  ), // blue
+        // ColorRange(Color_t(120, 216, 179), Color_t(127, 255, 255), color_blue  ), // blue
+        // ColorRange(Color_t(120,  60, 112), Color_t(127, 215, 255), color_purple), // purple
+        // ColorRange(Color_t(128,  60, 153), Color_t(163, 255, 255), color_purple), // purple
     };
 
     checkRangeHaveIntersect();
